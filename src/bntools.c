@@ -1,0 +1,59 @@
+#include <stdio.h>
+#include <string.h>
+#include "nick.h"
+
+#define VERSION "0.1.0"
+
+struct command {
+	const char *name;
+	int (*proc)(int argc, char * const argv[]);
+	const char *desc;
+};
+
+static const struct command CMD[] = {
+	{ "nick", nick_main, "In silico nicking FASTA sequence on restriction sites" },
+};
+
+static void print_usage(void)
+{
+	size_t i;
+	size_t width = 0;
+	char fmt[32];
+
+	fprintf(stderr, "\n"
+			"Program: bnxtools (Tools for BioNano data analysis)\n"
+			"Version: "VERSION"\n"
+			"\n"
+			"Usage: bnxtools <command> [options]\n"
+			"\n"
+			"Command:\n");
+
+	for (i = 0; i < sizeof(CMD) / sizeof(CMD[0]); ++i) {
+		size_t len = strlen(CMD[i].name);
+		if (len > width) {
+			width = len;
+		}
+	}
+	snprintf(fmt, sizeof(fmt), "   %%-%zds   %%s\n", width);
+
+	for (i = 0; i < sizeof(CMD) / sizeof(CMD[0]); ++i) {
+		fprintf(stderr, fmt, CMD[i].name, CMD[i].desc);
+	}
+	fprintf(stderr, "\n");
+}
+
+int main(int argc, char * const argv[])
+{
+	size_t i;
+	if (argc == 1) {
+		print_usage();
+	} else {
+		for (i = 0; i < sizeof(CMD) / sizeof(CMD[0]); ++i) {
+			if (strcmp(argv[1], CMD[i].name) == 0) {
+				return (*CMD[i].proc)(argc - 1, argv + 1);
+			}
+		}
+		fprintf(stderr, "Error: Unrecognized command '%s'\n", argv[1]);
+	}
+	return 1;
+}
