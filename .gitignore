@@ -1,2 +1,3 @@
 bntools
-*.o
+tmp/
+src/version.h

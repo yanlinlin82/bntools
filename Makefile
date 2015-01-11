@@ -2,6 +2,8 @@ CC     = gcc
 CFLAGS = -Wall -O2
 LIBS   = -lz
 
+APP_VER := $(shell src/version.sh)
+
 TARGET = bntools
 MODULES = $(patsubst src/%.c,%,$(wildcard src/*.c))
 
@@ -10,11 +12,16 @@ MODULES = $(patsubst src/%.c,%,$(wildcard src/*.c))
 all: ${TARGET}
 
 clean:
-	@rm -vrf tmp/ ${TARGET}
+	@rm -vrf tmp/ ${TARGET} src/version.h
 
 ${TARGET}: ${MODULES:%=tmp/%.o}
 	${CC} ${CFLAGS} -o $@ $^ ${LIBS}
 
 tmp/%.o: src/%.c
+	${CC} -c ${CFLAGS} -o $@ $<
+
+sinclude ${MODULES:%=tmp/%.d}
+tmp/%.d: src/%.c
+	@echo "Parsing dependency for '$<'"
 	@[ -d ${@D} ] || mkdir -pv ${@D}
-	${CC} -c ${CFLAGS} -o $@ $^
+	@${CC} -MM $< -MT ${@:%.d=%.o} | sed 's,\($*\)\.o[ :]*,\1.o $@ : ,g' > $@

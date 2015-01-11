@@ -1,8 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "nick.h"
-
-#define VERSION "0.1.0"
+#include "version.h"
 
 struct command {
 	const char *name;
