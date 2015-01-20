@@ -134,7 +134,9 @@ static int process_line(struct nick_site_list *list, const char *line, const cha
 		for (revcomp = 0; revcomp <= (palindrome ? 0 : 1); ++revcomp) {
 			if (seq_match(buf + pos - rec_seq_size, rec_bases, rec_seq_size, revcomp)) {
 				int site_pos = base_count - (revcomp ? nick_offset : (rec_seq_size - nick_offset));
-				cmap_add_site(list, site_pos, revcomp);
+				if (cmap_add_site(list, site_pos, revcomp)) {
+					return -ENOMEM;
+				}
 			}
 		}
 	}
@@ -196,6 +198,49 @@ static void print_results(gzFile fout)
 	}
 }
 
+static int process(gzFile fin)
+{
+	struct nick_site_list *list = NULL;
+	char chrom[MAX_CHROM_NAME_SIZE] = "";
+	int base_count = 0;
+	while (!gzeof(fin)) {
+		char buf[256];
+		if (!gzgets(fin, buf, sizeof(buf))) break;
+		if (buf[0] == '>') {
+			if (list) {
+				list->chrom_size = base_count;
+			}
+			if (transform_to_number) {
+				static int number = 0;
+				snprintf(chrom, sizeof(chrom), "%d", ++number);
+			} else {
+				char *p = buf + 1;
+				while (*p && !isspace(*p)) ++p;
+				*p = '\0';
+				snprintf(chrom, sizeof(chrom), buf + 1);
+			}
+			if (verbose > 0) {
+				fprintf(stderr, "Loading sequence '%s' ... ", chrom);
+			}
+			base_count = 0;
+			list = cmap_add_chrom(&cmap, chrom);
+			if (!list) {
+				return -ENOMEM;
+			}
+		} else {
+			int n = process_line(list, buf, chrom, base_count);
+			if (n < 0) {
+				return n;
+			}
+			base_count = n;
+		}
+	}
+	if (list) {
+		list->chrom_size = base_count;
+	}
+	return 0;
+}
+
 static int nick(const char *in)
 {
 	gzFile fin = NULL;
@@ -241,40 +286,9 @@ static int nick(const char *in)
 	}
 	gzungetc(c, fin);
 
-	{
-		struct nick_site_list *list = NULL;
-		char chrom[MAX_CHROM_NAME_SIZE] = "";
-		int base_count = 0;
-		while (!gzeof(fin)) {
-			char buf[256];
-			if (!gzgets(fin, buf, sizeof(buf))) break;
-			if (buf[0] == '>') {
-				if (list) {
-					list->chrom_size = base_count;
-				}
-				if (transform_to_number) {
-					static int number = 0;
-					snprintf(chrom, sizeof(chrom), "%d", ++number);
-				} else {
-					char *p = buf + 1;
-					while (*p && !isspace(*p)) ++p;
-					*p = '\0';
-					snprintf(chrom, sizeof(chrom), buf + 1);
-				}
-				if (verbose > 0) {
-					fprintf(stderr, "Loading sequence '%s' ... ", chrom);
-				}
-				base_count = 0;
-				list = cmap_add_chrom(&cmap, chrom);
-			} else {
-				base_count = process_line(list, buf, chrom, base_count);
-			}
-		}
-		if (list) {
-			list->chrom_size = base_count;
-		}
+	if (process(fin)) {
+		return 1;
 	}
-
 	print_results(fout);
 
 	gzclose(fout);
