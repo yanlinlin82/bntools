@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <string.h>
-#include "nick.h"
 #include "version.h"
+#include "nick.h"
 
 struct command {
 	const char *name;
@@ -10,7 +10,7 @@ struct command {
 };
 
 static const struct command CMD[] = {
-	{ "nick", nick_main, "In silico nicking FASTA sequence on restriction sites" },
+	{ "nick", nick_main, "Generate restriction map from sequence" },
 };
 
 static void print_usage(void)
@@ -20,10 +20,10 @@ static void print_usage(void)
 	char fmt[32];
 
 	fprintf(stderr, "\n"
-			"Program: bnxtools (Tools for BioNano data analysis)\n"
+			"Program: bntools (Tools for BioNano data analysis)\n"
 			"Version: "VERSION"\n"
 			"\n"
-			"Usage: bnxtools <command> [options]\n"
+			"Usage: bntools <command> [options]\n"
 			"\n"
 			"Command:\n");
 
