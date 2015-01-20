@@ -29,6 +29,8 @@ static void print_usage(void)
 	fprintf(stderr, "\n"
 			"Program: bntools (Tools for BioNano data analysis)\n"
 			"Version: "VERSION"\n"
+			"Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)\n"
+			"Copyright: 2014-2015, Centre for Bioinformatics, Peking University, China\n"
 			"\n"
 			"Usage: bntools <command> [options]\n"
 			"\n"
