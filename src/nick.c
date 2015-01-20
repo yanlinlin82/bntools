@@ -9,14 +9,14 @@
 
 #define NAME "nick"
 #define DEF_ENZ_NAME "BspQI"
-#define DEF_REC_SITE "GCTCTTCN^"
+#define DEF_REC_SEQ "GCTCTTCN^"
 #define DEF_OUTPUT   "stdout"
 #define DEF_FORMAT   "bed"
 
 static int verbose = 0;
 
 static char enzyme_name[16] = DEF_ENZ_NAME;
-static char rec_site[32] = DEF_REC_SITE;
+static char rec_seq[32] = DEF_REC_SEQ;
 static char output_file[PATH_MAX] = DEF_OUTPUT;
 static int output_cmap = 0;
 
@@ -33,22 +33,22 @@ static int offset = 0;
 static char buf[64];
 static int pos = 0;
 
-static int prepare_rec_site(void)
+static int prepare_rec_seq(void)
 {
 	int i;
-	for (i = 0, target_length = 0; rec_site[i]; ++i) {
-		if (rec_site[i] == '^') {
+	for (i = 0, target_length = 0; rec_seq[i]; ++i) {
+		if (rec_seq[i] == '^') {
 			if (target_offset >= 0) {
-				fprintf(stderr, NAME": invalid recognition sequence '%s'\n", rec_site);
+				fprintf(stderr, NAME": invalid recognition sequence '%s'\n", rec_seq);
 				return 1;
 			}
 			target_offset = i;
 		} else {
 			if (target_length >= sizeof(target_seq)) {
-				fprintf(stderr, NAME": recognition sequence is too long '%s'\n", rec_site);
+				fprintf(stderr, NAME": recognition sequence is too long '%s'\n", rec_seq);
 				return 1;
 			}
-			target_seq[target_length++] = rec_site[i];
+			target_seq[target_length++] = rec_seq[i];
 		}
 	}
 	target_seq[target_length] = '\0';
@@ -79,7 +79,7 @@ static void print_usage(void)
 			"   -o FILE         output file ["DEF_OUTPUT"]\n"
 			"   -f {bed|cmap}   output format ["DEF_FORMAT"]\n"
 			"   -e STR          restriction enzyme name ["DEF_ENZ_NAME"]\n"
-			"   -r STR          recognition sequence ["DEF_REC_SITE"]\n"
+			"   -r STR          recognition sequence ["DEF_REC_SEQ"]\n"
 			"\n");
 }
 
@@ -215,7 +215,7 @@ static void process_line(gzFile fout, const char *line, const char *chrom)
 				if (output_cmap) {
 					append_sites(site);
 				} else {
-					gzprintf(fout, "%s\t%d\t%d\t%s\t0\t+\n", chrom, site - 1, site, enzyme_name);
+					gzprintf(fout, "%s\t%d\t%d\t%s/%s\t0\t+\n", chrom, site - 1, site, enzyme_name, rec_seq);
 				}
 			} else {
 				if (target_offset_revcomp >= 0) {
@@ -224,7 +224,7 @@ static void process_line(gzFile fout, const char *line, const char *chrom)
 						if (output_cmap) {
 							append_sites(offset - target_length + target_offset_revcomp);
 						} else {
-							gzprintf(fout, "%s\t%d\t%d\t%s\t0\t-\n", chrom, site - 1, site, enzyme_name);
+							gzprintf(fout, "%s\t%d\t%d\t%s/%s\t0\t-\n", chrom, site - 1, site, enzyme_name, rec_seq);
 						}
 					}
 				}
@@ -237,7 +237,7 @@ static void write_cmap_header(gzFile fout)
 {
 	gzprintf(fout, "# CMAP File Version:  0.1\n");
 	gzprintf(fout, "# Label Channels:  1\n");
-	gzprintf(fout, "# Nickase Recognition Site 1:  %s/%s\n", enzyme_name, rec_site);
+	gzprintf(fout, "# Nickase Recognition Site 1:  %s/%s\n", enzyme_name, rec_seq);
 	gzprintf(fout, "# Number of Consensus Nanomaps:    24\n");
 	gzprintf(fout, "#h CMapId	ContigLength	NumSites	SiteID	LabelChannel	Position	StdDev	Coverage	Occurrence\n");
 	gzprintf(fout, "#f int	float	int	int	int	float	float	int	int\n");
@@ -368,7 +368,7 @@ int nick_main(int argc, char * const argv[])
 			snprintf(enzyme_name, sizeof(enzyme_name), "%s", optarg);
 			break;
 		case 'r':
-			snprintf(rec_site, sizeof(rec_site), "%s", optarg);
+			snprintf(rec_seq, sizeof(rec_seq), "%s", optarg);
 			break;
 		default:
 			return 1;
@@ -378,7 +378,7 @@ int nick_main(int argc, char * const argv[])
 		print_usage();
 		return 1;
 	}
-	if (prepare_rec_site() != 0) {
+	if (prepare_rec_seq() != 0) {
 		return 1;
 	}
 	return nick(argv[optind]);
