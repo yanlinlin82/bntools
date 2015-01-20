@@ -162,43 +162,48 @@ static void output_cmap_line(gzFile fout, const char *cmap_id, int contig_length
 			label_channel, position, stddev, coverage, occurance);
 }
 
-static void print_results(gzFile fout)
+static void print_nick_site_list(gzFile fout, const struct nick_site_list *p)
 {
-	size_t i, j, k, count;
+	size_t j, k, count;
 	if (output_cmap) {
-		write_cmap_header(fout, cmap.size);
-	}
-	for (i = 0; i < cmap.size; ++i) {
-		const struct nick_site_list *p = &cmap.data[i];
-		if (output_cmap) {
-			for (j = 0, count = 0; j < p->size; ++j) {
-				if (j > 0 && p->data[j - 1].pos == p->data[j].pos) {
-					continue;
-				}
-				++count;
+		for (j = 0, count = 0; j < p->size; ++j) {
+			if (j > 0 && p->data[j - 1].pos == p->data[j].pos) {
+				continue;
 			}
-			for (j = 0, k = 0; j < p->size; ++j) {
-				if (j > 0 && p->data[j - 1].pos == p->data[j].pos) {
-					continue;
-				}
-				output_cmap_line(fout, p->chrom_name, p->chrom_size, count,
-						++k, 1, p->data[j].pos, 0, 0, 0);
+			++count;
+		}
+		for (j = 0, k = 0; j < p->size; ++j) {
+			if (j > 0 && p->data[j - 1].pos == p->data[j].pos) {
+				continue;
 			}
-			if (count > 0) {
-				output_cmap_line(fout, p->chrom_name, p->chrom_size, count,
-						count + 1, 0, p->chrom_size, 0, 1, 1);
-			}
-		} else {
-			for (j = 0, k = 0; j < p->size; ++j) {
-				gzprintf(fout, "%s\t%d\t%d\t%s/%s\t0\t%c\n",
-						p->chrom_name, p->data[j].pos, p->data[j].pos + 1,
-						enzyme_name, rec_seq, "+-"[p->data[j].strand]);
-			}
+			output_cmap_line(fout, p->chrom_name, p->chrom_size, count,
+					++k, 1, p->data[j].pos, 0, 0, 0);
+		}
+		if (count > 0) {
+			output_cmap_line(fout, p->chrom_name, p->chrom_size, count,
+					count + 1, 0, p->chrom_size, 0, 1, 1);
+		}
+	} else {
+		for (j = 0, k = 0; j < p->size; ++j) {
+			gzprintf(fout, "%s\t%d\t%d\t%s/%s\t0\t%c\n",
+					p->chrom_name, p->data[j].pos, p->data[j].pos + 1,
+					enzyme_name, rec_seq, "+-"[p->data[j].strand]);
 		}
 	}
 }
 
-static int process(gzFile fin)
+static void print_results(gzFile fout)
+{
+	size_t i;
+	if (output_cmap) {
+		write_cmap_header(fout, cmap.size);
+	}
+	for (i = 0; i < cmap.size; ++i) {
+		print_nick_site_list(fout, &cmap.data[i]);
+	}
+}
+
+static int process(gzFile fin, gzFile fout)
 {
 	struct nick_site_list *list = NULL;
 	char chrom[MAX_CHROM_NAME_SIZE] = "";
@@ -208,6 +213,9 @@ static int process(gzFile fin)
 		if (!gzgets(fin, buf, sizeof(buf))) break;
 		if (buf[0] == '>') {
 			if (list) {
+				if (!output_cmap) {
+					print_nick_site_list(fout, list);
+				}
 				list->chrom_size = base_count;
 			}
 			if (transform_to_number) {
@@ -237,6 +245,12 @@ static int process(gzFile fin)
 	}
 	if (list) {
 		list->chrom_size = base_count;
+		if (!output_cmap) {
+			print_nick_site_list(fout, list);
+		}
+	}
+	if (output_cmap) {
+		print_results(fout);
 	}
 	return 0;
 }
@@ -286,10 +300,9 @@ static int nick(const char *in)
 	}
 	gzungetc(c, fin);
 
-	if (process(fin)) {
+	if (process(fin, fout)) {
 		return 1;
 	}
-	print_results(fout);
 
 	gzclose(fout);
 	gzclose(fin);
