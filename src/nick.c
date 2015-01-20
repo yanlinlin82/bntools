@@ -11,6 +11,7 @@
 #define DEF_ENZ_NAME "BspQI"
 #define DEF_REC_SITE "GCTCTTCN^"
 #define DEF_OUTPUT   "stdout"
+#define DEF_FORMAT   "bed"
 
 static int verbose = 0;
 
@@ -73,12 +74,12 @@ static void print_usage(void)
 			"Usage: bntools "NAME" [options] <x.fa>\n"
 			"\n"
 			"Options:\n"
-			"   <x.fa>   input FASTA sequence to generate restriction map\n"
-			"   -v       show verbose messages\n"
-			"   -o FILE  output file ["DEF_OUTPUT"]\n"
-			"   -C       output in .cmap format rather than .bed format\n"
-			"   -e STR   restriction enzyme name ["DEF_ENZ_NAME"]\n"
-			"   -r STR   recognition sequence ["DEF_REC_SITE"]\n"
+			"   <x.fa>          input FASTA sequence to generate restriction map\n"
+			"   -v              show verbose messages\n"
+			"   -o FILE         output file ["DEF_OUTPUT"]\n"
+			"   -f {bed|cmap}   output format ["DEF_FORMAT"]\n"
+			"   -e STR          restriction enzyme name ["DEF_ENZ_NAME"]\n"
+			"   -r STR          recognition sequence ["DEF_REC_SITE"]\n"
 			"\n");
 }
 
@@ -345,7 +346,7 @@ static int nick(const char *in)
 int nick_main(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "vo:Ce:r:")) != -1) {
+	while ((c = getopt(argc, argv, "vo:f:e:r:")) != -1) {
 		switch (c) {
 		case 'v':
 			++verbose;
@@ -353,8 +354,15 @@ int nick_main(int argc, char * const argv[])
 		case 'o':
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
 			break;
-		case 'C':
-			output_cmap = 1;
+		case 'f':
+			if (strcmp(optarg, "bed") == 0) {
+				output_cmap = 0;
+			} else if (strcmp(optarg, "cmap") == 0) {
+				output_cmap = 1;
+			} else {
+				fprintf(stderr, "Error: Unknown output format '%s'!\n", optarg);
+				return 1;
+			}
 			break;
 		case 'e':
 			snprintf(enzyme_name, sizeof(enzyme_name), "%s", optarg);
