@@ -38,9 +38,6 @@ static int rec_seq_size = 0;
 static int nick_offset = -1;
 static int palindrome = 1;
 
-static char chrom[MAX_CHROM_NAME_SIZE] = "";
-static int offset = 0;
-
 static char buf[MAX_REC_SEQ_SIZE * 2];
 static int pos = 0;
 
@@ -226,10 +223,11 @@ static int seq_match(const char *ref, const char *query, size_t len, int revcomp
 	return 1;
 }
 
-static void process_line(gzFile fout, const char *line, const char *chrom)
+static int process_line(gzFile fout, const char *line, const char *chrom, int offset)
 {
 	const char *p;
 	int revcomp;
+	int count = 0;
 	for (p = line; *p; ++p) {
 		if (is_whitespace(*p)) {
 			continue;
@@ -238,18 +236,19 @@ static void process_line(gzFile fout, const char *line, const char *chrom)
 			memcpy(buf, buf + sizeof(buf) - rec_seq_size + 1, rec_seq_size - 1);
 			pos = rec_seq_size - 1;
 		}
-		++offset;
+		++count;
 		buf[pos++] = BASE_MAP[(int)*p];
 		if (pos < rec_seq_size) {
 			continue;
 		}
 		for (revcomp = 0; revcomp <= (palindrome ? 0 : 1); ++revcomp) {
 			if (seq_match(buf + pos - rec_seq_size, rec_bases, rec_seq_size, revcomp)) {
-				int pos = offset - (revcomp ? nick_offset : (rec_seq_size - nick_offset));
-				add_result(pos, revcomp);
+				int site_pos = offset + count - (revcomp ? nick_offset : (rec_seq_size - nick_offset));
+				add_result(site_pos, revcomp);
 			}
 		}
 	}
+	return count;
 }
 
 static void write_cmap_header(gzFile fout, size_t seq_total_number)
@@ -310,6 +309,8 @@ static int nick(const char *in)
 	gzFile fin = NULL;
 	gzFile fout = NULL;
 	int c;
+	char chrom[MAX_CHROM_NAME_SIZE] = "";
+	int offset = 0;
 
 	if (strcmp(in, "-") == 0 || strcmp(in, "stdin") == 0) {
 		fin = gzdopen(0, "r"); /* stdin */
@@ -375,7 +376,7 @@ static int nick(const char *in)
 			}
 			offset = 0;
 		} else {
-			process_line(fout, buf, chrom);
+			offset += process_line(fout, buf, chrom, offset);
 		}
 	}
 	print_results(fout, chrom, offset);
