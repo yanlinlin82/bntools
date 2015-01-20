@@ -1,3 +1,4 @@
 bntools
 tmp/
 src/version.h
+.*.swp
