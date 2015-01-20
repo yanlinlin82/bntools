@@ -67,7 +67,7 @@ static int prepare_recog_seq(void)
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
-			"Usage: bnxtools "NAME" [options] <fa.gz>\n"
+			"Usage: bntools "NAME" [options] <fa.gz>\n"
 			"\n"
 			"Options:\n"
 			"   -e STR   restriction enzyme name [BspQI]\n"
