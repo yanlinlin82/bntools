@@ -8,12 +8,15 @@
 #include "nick.h"
 
 #define NAME "nick"
+#define DEF_ENZ_NAME "BspQI"
+#define DEF_REC_SITE "GCTCTTCN^"
+#define DEF_OUTPUT   "output"
 
 static int verbose = 0;
 
-static char enzyme_name[16] = "BspQI";
-static char recog_seq[32] = "GCTCTTCN^";
-static char output_file[PATH_MAX] = "stdout";
+static char enzyme_name[16] = DEF_ENZ_NAME;
+static char rec_site[32] = DEF_REC_SITE;
+static char output_file[PATH_MAX] = DEF_OUTPUT;
 static int output_cmap = 0;
 
 static char target_seq[32] = "";
@@ -29,22 +32,22 @@ static int offset = 0;
 static char buf[64];
 static int pos = 0;
 
-static int prepare_recog_seq(void)
+static int prepare_rec_site(void)
 {
 	int i;
-	for (i = 0, target_length = 0; recog_seq[i]; ++i) {
-		if (recog_seq[i] == '^') {
+	for (i = 0, target_length = 0; rec_site[i]; ++i) {
+		if (rec_site[i] == '^') {
 			if (target_offset >= 0) {
-				fprintf(stderr, NAME": invalid recognition sequence '%s'\n", recog_seq);
+				fprintf(stderr, NAME": invalid recognition sequence '%s'\n", rec_site);
 				return 1;
 			}
 			target_offset = i;
 		} else {
 			if (target_length >= sizeof(target_seq)) {
-				fprintf(stderr, NAME": recognition sequence is too long '%s'\n", recog_seq); 
+				fprintf(stderr, NAME": recognition sequence is too long '%s'\n", rec_site);
 				return 1;
 			}
-			target_seq[target_length++] = recog_seq[i];
+			target_seq[target_length++] = rec_site[i];
 		}
 	}
 	target_seq[target_length] = '\0';
@@ -67,14 +70,15 @@ static int prepare_recog_seq(void)
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
-			"Usage: bntools "NAME" [options] <fa.gz>\n"
+			"Usage: bntools "NAME" [options] <x.fa>\n"
 			"\n"
 			"Options:\n"
-			"   -e STR   restriction enzyme name [BspQI]\n"
-			"   -r STR   recognition sequence [GCTCTTCN^]\n"
-			"   -o FILE  output file [stdout]\n"
+			"   <x.fa>   input FASTA sequence to generate restriction map\n"
+			"   -v       show verbose messages\n"
+			"   -o FILE  output file ["DEF_OUTPUT"]\n"
 			"   -C       output in .cmap format rather than .bed format\n"
-			"   -v       show verbose message\n"
+			"   -e STR   restriction enzyme name ["DEF_ENZ_NAME"]\n"
+			"   -r STR   recognition sequence ["DEF_REC_SITE"]\n"
 			"\n");
 }
 
@@ -232,7 +236,7 @@ static void write_cmap_header(gzFile fout)
 {
 	gzprintf(fout, "# CMAP File Version:  0.1\n");
 	gzprintf(fout, "# Label Channels:  1\n");
-	gzprintf(fout, "# Nickase Recognition Site 1:  %s/%s\n", enzyme_name, recog_seq);
+	gzprintf(fout, "# Nickase Recognition Site 1:  %s/%s\n", enzyme_name, rec_site);
 	gzprintf(fout, "# Number of Consensus Nanomaps:    24\n");
 	gzprintf(fout, "#h CMapId	ContigLength	NumSites	SiteID	LabelChannel	Position	StdDev	Coverage	Occurrence\n");
 	gzprintf(fout, "#f int	float	int	int	int	float	float	int	int\n");
@@ -341,22 +345,22 @@ static int nick(const char *in)
 int nick_main(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "e:r:v:o:C")) != -1) {
+	while ((c = getopt(argc, argv, "vo:Ce:r:")) != -1) {
 		switch (c) {
-		case 'e':
-			snprintf(enzyme_name, sizeof(enzyme_name), "%s", optarg);
-			break;
-		case 'r':
-			snprintf(recog_seq, sizeof(recog_seq), "%s", optarg);
+		case 'v':
+			++verbose;
 			break;
 		case 'o':
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
 			break;
-		case 'v':
-			++verbose;
-			break;
 		case 'C':
 			output_cmap = 1;
+			break;
+		case 'e':
+			snprintf(enzyme_name, sizeof(enzyme_name), "%s", optarg);
+			break;
+		case 'r':
+			snprintf(rec_site, sizeof(rec_site), "%s", optarg);
 			break;
 		default:
 			return 1;
@@ -366,7 +370,7 @@ int nick_main(int argc, char * const argv[])
 		print_usage();
 		return 1;
 	}
-	if (prepare_recog_seq() != 0) {
+	if (prepare_rec_site() != 0) {
 		return 1;
 	}
 	return nick(argv[optind]);
