@@ -10,7 +10,7 @@
 #define NAME "nick"
 #define DEF_ENZ_NAME "BspQI"
 #define DEF_REC_SITE "GCTCTTCN^"
-#define DEF_OUTPUT   "output"
+#define DEF_OUTPUT   "stdout"
 
 static int verbose = 0;
 
