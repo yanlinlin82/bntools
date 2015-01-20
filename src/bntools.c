@@ -3,6 +3,12 @@
 #include "version.h"
 #include "nick.h"
 
+int version_main(int argc, char * const argv[])
+{
+	fprintf(stdout, "%s\n", VERSION);
+	return 0;
+}
+
 struct command {
 	const char *name;
 	int (*proc)(int argc, char * const argv[]);
@@ -10,7 +16,8 @@ struct command {
 };
 
 static const struct command CMD[] = {
-	{ "nick", nick_main, "Generate restriction map from sequence" },
+	{ "version", version_main, "Show program version" },
+	{ "nick",    nick_main,    "Generate restriction map from sequence" },
 };
 
 static void print_usage(void)
