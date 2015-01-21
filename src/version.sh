@@ -1,6 +1,9 @@
 #!/bin/bash
 
-GIT_VER=$(git rev-parse --short HEAD)
+GIT_VER=$(git rev-parse --short HEAD 2>/dev/null)
+if [ -z "${GIT_VER}" ]; then
+	GIT_VER=unspecified
+fi
 
 update_ver() {
 	cat src/version.h.in | sed s,{{GIT_VER}},${GIT_VER},g
