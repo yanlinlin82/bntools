@@ -1,7 +1,8 @@
 #include <stdio.h>
 #include <string.h>
 #include "version.h"
-#include "nick.h"
+
+extern int nick_main(int argc, char * const argv[]);
 
 int version_main(int argc, char * const argv[])
 {

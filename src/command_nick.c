@@ -7,11 +7,9 @@
 #include <getopt.h>
 #include <limits.h>
 #include <zlib.h>
-#include "nick.h"
 #include "base_map.h"
-#include "cmap.h"
+#include "nick_map.h"
 
-#define NAME "nick"
 #define DEF_ENZ_NAME "BspQI"
 #define DEF_REC_SEQ "GCTCTTCN^"
 #define DEF_OUTPUT "stdout"
@@ -37,7 +35,7 @@ static int palindrome = 1;
 static char buf[MAX_REC_SEQ_SIZE * 2];
 static int pos = 0;
 
-struct cmap cmap = { };
+struct nick_map map = { };
 
 static int prepare_rec_seq(void)
 {
@@ -77,7 +75,7 @@ static int prepare_rec_seq(void)
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
-			"Usage: bntools "NAME" [options] <x.fa>\n"
+			"Usage: bntools nick [options] <x.fa>\n"
 			"\n"
 			"Options:\n"
 			"   <x.fa>          input FASTA sequence to generate restriction map\n"
@@ -134,7 +132,7 @@ static int process_line(struct nick_site_list *list, const char *line, const cha
 		for (revcomp = 0; revcomp <= (palindrome ? 0 : 1); ++revcomp) {
 			if (seq_match(buf + pos - rec_seq_size, rec_bases, rec_seq_size, revcomp)) {
 				int site_pos = base_count - (revcomp ? nick_offset : (rec_seq_size - nick_offset));
-				if (cmap_add_site(list, site_pos, revcomp)) {
+				if (nick_map_add_site(list, site_pos, revcomp)) {
 					return -ENOMEM;
 				}
 			}
@@ -196,10 +194,10 @@ static void print_results(gzFile fout)
 {
 	size_t i;
 	if (output_cmap) {
-		write_cmap_header(fout, cmap.size);
+		write_cmap_header(fout, map.size);
 	}
-	for (i = 0; i < cmap.size; ++i) {
-		print_nick_site_list(fout, &cmap.data[i]);
+	for (i = 0; i < map.size; ++i) {
+		print_nick_site_list(fout, &map.data[i]);
 	}
 }
 
@@ -231,7 +229,7 @@ static int process(gzFile fin, gzFile fout)
 				fprintf(stderr, "Loading sequence '%s' ... ", chrom);
 			}
 			base_count = 0;
-			list = cmap_add_chrom(&cmap, chrom);
+			list = nick_map_add_chrom(&map, chrom);
 			if (!list) {
 				return -ENOMEM;
 			}
@@ -306,7 +304,7 @@ static int nick(const char *in)
 
 	gzclose(fout);
 	gzclose(fin);
-	cmap_free(&cmap);
+	nick_map_free(&map);
 	return 0;
 }
 
