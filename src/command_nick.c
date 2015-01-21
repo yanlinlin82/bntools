@@ -13,7 +13,7 @@
 #define DEF_ENZ_NAME "BspQI"
 #define DEF_REC_SEQ "GCTCTTCN^"
 #define DEF_OUTPUT "stdout"
-#define DEF_FORMAT "bed"
+#define DEF_FORMAT "tsv"
 
 #define MAX_ENZYME_NAME_SIZE 16
 #define MAX_REC_SEQ_SIZE 32
@@ -78,13 +78,13 @@ static void print_usage(void)
 			"Usage: bntools nick [options] <x.fa>\n"
 			"\n"
 			"Options:\n"
-			"   <x.fa>          input FASTA sequence to generate restriction map\n"
-			"   -v              show verbose messages\n"
-			"   -o FILE         output file ["DEF_OUTPUT"]\n"
-			"   -f {bed|cmap}   output format ["DEF_FORMAT"]\n"
-			"   -e STR          restriction enzyme name ["DEF_ENZ_NAME"]\n"
-			"   -r STR          recognition sequence ["DEF_REC_SEQ"]\n"
-			"   -n              transform chromosome names into numbers\n"
+			"   <x.fa>         input FASTA sequence to generate restriction map\n"
+			"   -v             show verbose messages\n"
+			"   -o FILE        output file ["DEF_OUTPUT"]\n"
+			"   -f {tsv|cmap}  output format ["DEF_FORMAT"]\n"
+			"   -e STR         restriction enzyme name ["DEF_ENZ_NAME"]\n"
+			"   -r STR         recognition sequence ["DEF_REC_SEQ"]\n"
+			"   -n             transform chromosome names into numbers\n"
 			"\n");
 }
 
@@ -257,7 +257,7 @@ int nick_main(int argc, char * const argv[])
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
 			break;
 		case 'f':
-			if (strcmp(optarg, "bed") == 0) {
+			if (strcmp(optarg, "tsv") == 0) {
 				output_cmap = 0;
 			} else if (strcmp(optarg, "cmap") == 0) {
 				output_cmap = 1;
