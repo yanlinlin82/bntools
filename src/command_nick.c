@@ -88,11 +88,6 @@ static void print_usage(void)
 			"\n");
 }
 
-static inline int is_whitespace(int c)
-{
-	return (c == ' ' || c == '\t' || c == '\r' || c == '\n');
-}
-
 static int seq_match(const char *ref, const char *query, size_t len, int strand)
 {
 	size_t i;
@@ -113,7 +108,7 @@ static int process_line(struct nick_list *list, const char *line, const char *ch
 	int strand;
 	int matched;
 	for (p = line; *p; ++p) {
-		if (is_whitespace(*p)) {
+		if (isspace(*p)) {
 			continue;
 		}
 		if (pos >= sizeof(buf)) {

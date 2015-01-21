@@ -221,7 +221,7 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
 				p = strchr(buf, ':');
 				assert(p != NULL);
 				++p;
-				while (*p && isspace(*p)) ++p;
+				while (*p && isblank(*p)) ++p;
 				q = strchr(p, '/');
 				if (q != NULL) {
 					*q++ = '\0';
