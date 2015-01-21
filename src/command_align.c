@@ -7,19 +7,21 @@
 #include <zlib.h>
 #include "nick_map.h"
 
+#define DEF_OUTPUT "stdout"
+
 static int verbose = 0;
 
-static char output_file[PATH_MAX] = "stdout";
+static char output_file[PATH_MAX] = DEF_OUTPUT;
 
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
-			"Usage: bntools align [options] <1.map> [<2.map>]\n"
+			"Usage: bntools align [options] <input_a> [<input_b>]\n"
 			"\n"
 			"Options:\n"
-			"   <x.map>  input map file, in tsv/cmap format\n"
-			"   -o FILE  output file [stdout]\n"
-			"   -v       show verbose message\n"
+			"   <input_x>   input map file(s), in tsv/cmap/bnx format\n"
+			"   -o FILE     output file ["DEF_OUTPUT"]\n"
+			"   -v          show verbose message\n"
 			"\n");
 }
 

@@ -7,20 +7,22 @@
 #include <zlib.h>
 #include "nick_map.h"
 
+#define DEF_OUTPUT "stdout"
+
 static int verbose = 0;
 
-static char output_file[PATH_MAX] = "stdout";
+static char output_file[PATH_MAX] = DEF_OUTPUT;
 
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
-			"Usage: bntools map [options] <ref.fa> <mol.bnx>\n"
+			"Usage: bntools map [options] <ref> <query>\n"
 			"\n"
 			"Options:\n"
-			"   <ref.fa>   reference genome, in fasta/tsv/cmap format\n"
-			"   <mol.bnx>  bionano molecules, in bnx/tsv/cmap format\n"
-			"   -o FILE    output file [stdout]\n"
-			"   -v         show verbose message\n"
+			"   <ref>     reference genome, in fasta/tsv/cmap format\n"
+			"   <query>   query molecules/contigs, in tsv/cmap/bnx format\n"
+			"   -o FILE   output file ["DEF_OUTPUT"]\n"
+			"   -v        show verbose message\n"
 			"\n");
 }
 

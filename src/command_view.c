@@ -18,13 +18,13 @@ static int output_cmap = 0;
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
-			"Usage: bntools view [options] <in.map>\n"
+			"Usage: bntools view [options] <input> [...]\n"
 			"\n"
 			"Options:\n"
-			"   <in.map>       input map file, in tsv/cmap format\n"
-			"   -o FILE        output file [stdout]\n"
-			"   -f {tsv|cmap}  output format ["DEF_FORMAT"]\n"
-			"   -v             show verbose message\n"
+			"   <input> [...]   input map file(s), in tsv/cmap/bnx format\n"
+			"   -o FILE         output file ["DEF_OUTPUT"]\n"
+			"   -f {tsv|cmap}   output format ["DEF_FORMAT"]\n"
+			"   -v              show verbose message\n"
 			"\n");
 }
 
