@@ -17,7 +17,7 @@ struct command {
 };
 
 static const struct command CMD[] = {
-	{ "version", version_main, "Show program version" },
+	{ "version", version_main, "Print program version" },
 	{ "nick",    nick_main,    "Generate restriction map from sequence" },
 };
 
