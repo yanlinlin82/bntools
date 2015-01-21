@@ -148,10 +148,10 @@ static int process(gzFile fin, gzFile fout)
 		if (!gzgets(fin, buf, sizeof(buf))) break;
 		if (buf[0] == '>') {
 			if (list) {
+				list->chrom_size = base_count;
 				if (!output_cmap) {
 					nick_map_write(fout, &map, list);
 				}
-				list->chrom_size = base_count;
 			}
 			if (transform_to_number) {
 				static int number = 0;
