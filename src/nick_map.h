@@ -29,11 +29,15 @@ struct nick_map {
 	char *rec_seq;
 };
 
-int  nick_map_init(struct nick_map *map, const char *enzyme, const char *rec_seq);
+void nick_map_init(struct nick_map *map);
 void nick_map_free(struct nick_map *map);
+
+int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *rec_seq);
 
 struct nick_list *nick_map_add_chrom(struct nick_map *map, const char *chrom);
 int nick_map_add_site(struct nick_list *p, int pos, int strand);
+
+int nick_map_load(struct nick_map *map, gzFile file);
 
 void nick_map_write(gzFile file, const struct nick_map *map, const struct nick_list *list);
 void nick_map_write_cmap(gzFile file, const struct nick_map *map);

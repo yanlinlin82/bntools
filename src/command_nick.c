@@ -290,7 +290,12 @@ int nick_main(int argc, char * const argv[])
 		return 1;
 	}
 
-	nick_map_init(&map, enzyme, rec_seq);
+	nick_map_init(&map);
+
+	if (nick_map_set_enzyme(&map, enzyme, rec_seq)) {
+		nick_map_free(&map);
+		return 1;
+	}
 
 	return nick(argv[optind]);
 }

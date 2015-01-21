@@ -3,6 +3,7 @@
 #include "version.h"
 
 extern int nick_main(int argc, char * const argv[]);
+extern int align_main(int argc, char * const argv[]);
 
 int version_main(int argc, char * const argv[])
 {
@@ -19,6 +20,7 @@ struct command {
 static const struct command CMD[] = {
 	{ "version", version_main, "Print program version" },
 	{ "nick",    nick_main,    "Generate restriction map from sequence" },
+	{ "align",   align_main,   "Align between two restriction maps" },
 };
 
 static void print_usage(void)

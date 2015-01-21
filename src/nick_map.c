@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <assert.h>
 #include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -60,24 +61,15 @@ static int nick_list_reserve(struct nick_list *list, size_t size)
 	return 0;
 }
 
-int nick_map_init(struct nick_map *map, const char *enzyme, const char *rec_seq)
+void nick_map_init(struct nick_map *map)
 {
-	map->capacity = 0;
-	map->size = 0;
-	map->data = NULL;
-	map->enzyme = strdup(enzyme);
-	map->rec_seq = strdup(rec_seq);
-	if (!map->enzyme || !map->rec_seq) {
-		free(map->enzyme);
-		free(map->rec_seq);
-		return -ENOMEM;
-	}
-	return 0;
+	memset(map, 0, sizeof(struct nick_map));
 }
 
 void nick_map_free(struct nick_map *map)
 {
 	size_t i;
+
 	for (i = 0; i < map->size; ++i) {
 		free(map->data[i].chrom_name);
 		free(map->data[i].data);
@@ -86,6 +78,16 @@ void nick_map_free(struct nick_map *map)
 	map->data = NULL;
 	map->size = 0;
 	map->capacity= 0;
+
+	free(map->enzyme);
+	free(map->rec_seq);
+}
+
+int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *rec_seq)
+{
+	map->enzyme = strdup(enzyme);
+	map->rec_seq = strdup(rec_seq);
+	return (map->enzyme && map->rec_seq ? 0 : -ENOMEM);
 }
 
 struct nick_list *nick_map_add_chrom(struct nick_map *map, const char *chrom)
@@ -133,6 +135,101 @@ int nick_map_add_site(struct nick_list *p, int pos, int strand)
 	p->data[i].pos = pos;
 	p->data[i].strand = strand;
 	++p->size;
+	return 0;
+}
+
+static inline int string_begins_as(const char *s, const char *prefix)
+{
+	return (memcmp(s, prefix, strlen(prefix)) == 0);
+}
+
+static inline int skip_to_next_line(gzFile file, char *buf, size_t bufsize)
+{
+	while (strchr(buf, '\n') == NULL) {
+		if (!gzgets(file, buf, bufsize)) return 1;
+	}
+	return 0;
+}
+
+static inline int to_integer(double x) { return (int)(x + .5); }
+
+int nick_map_load(struct nick_map *map, gzFile file)
+{
+	long long lineNo = 0;
+	char buf[256];
+	int format = 0; /* 1. BNX; 2. CMAP; 3. TSV */
+	char molecule_id[64] = "";
+	double length = 0;
+	int molecule_length;
+	struct nick_list *list = NULL;
+
+	while (!gzeof(file)) {
+		++lineNo;
+		if (!gzgets(file, buf, sizeof(buf))) break;
+		if (buf[0] != '#') break;
+		if (string_begins_as(buf, "# BNX File Version:")) {
+			format = 1;
+			break;
+		} else if (string_begins_as(buf, "# CMAP File Version:")) {
+			format = 2;
+			break;
+		} else if (string_begins_as(buf, "##fileformat=MAPv0.l")) {
+			format = 3;
+			break;
+		}
+		if (skip_to_next_line(file, buf, sizeof(buf))) break;
+	}
+	if (!format) {
+		fprintf(stderr, "Error: Unknown input map format!\n");
+		return -EINVAL;
+	}
+	while (!gzeof(file)) {
+		++lineNo;
+		if (!gzgets(file, buf, sizeof(buf))) break;
+		if (buf[0] == '#') continue;
+		if (format == 1) { /* BNX */
+			if (memcmp(buf, "0\t", 2) == 0) { /* molecule info */
+				if (sscanf(buf + 2, "%s%lf", molecule_id, &length) != 2) {
+					fprintf(stderr, "Error: Invalid format on line %lld\n", lineNo);
+					return 1;
+				}
+				molecule_length = to_integer(length);
+				list = nick_map_add_chrom(map, molecule_id);
+				list->chrom_size = molecule_length;
+				if (skip_to_next_line(file, buf, sizeof(buf))) break;
+			} else if (memcmp(buf, "1\t", 2) == 0) { /* label positions */
+				char *p = buf + 2;
+				for (;;) {
+					char *q = p;
+					double value;
+					while (*q && *q != '\t' && *q != '\n') ++q;
+					if (*q == '\0') {
+						size_t size = q - p;
+						memcpy(buf, p, size);
+						if (!gzgets(file, buf + size, sizeof(buf) - size)) break;
+						p = buf + size;
+						continue;
+					}
+					if (sscanf(p, "%lf", &value) != 1) {
+						fprintf(stderr, "Error: Failed in reading float value on line %lld\n", lineNo);
+						return 1;
+					}
+					nick_map_add_site(list, to_integer(value), 0);
+					if (*q == '\t') {
+						p = q + 1;
+					} else {
+						assert(*q == '\n');
+						break;
+					}
+				}
+			} else {
+				if (skip_to_next_line(file, buf, sizeof(buf))) break;
+			}
+		} else if (format == 2) { /* CMAP */
+		} else { /* TSV */
+			assert(format == 3);
+		}
+	}
 	return 0;
 }
 
@@ -194,8 +291,9 @@ void nick_map_write_cmap(gzFile file, const struct nick_map *map)
 	gzprintf(file, "# Label Channels:  1\n");
 	gzprintf(file, "# Nickase Recognition Site 1:  %s/%s\n", map->enzyme, map->rec_seq);
 	gzprintf(file, "# Number of Consensus Nanomaps:    %zd\n", map->size);
-	gzprintf(file, "#h CMapId	ContigLength	NumSites	SiteID	LabelChannel	Position	StdDev	Coverage	Occurrence\n");
-	gzprintf(file, "#f int	float	int	int	int	float	float	int	int\n");
+	gzprintf(file, "#h CMapId\tContigLength\tNumSites\tSiteID"
+			"\tLabelChannel\tPosition\tStdDev\tCoverage\tOccurrence\n");
+	gzprintf(file, "#f int\tfloat\tint\tint\tint\tfloat\tfloat\tint\tint\n");
 
 	for (i = 0; i < map->size; ++i) {
 		const struct nick_list *p = &map->data[i];
