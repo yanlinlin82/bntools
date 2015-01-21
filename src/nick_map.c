@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <ctype.h>
 #include <assert.h>
 #include <errno.h>
 #include <sys/types.h>
@@ -153,15 +154,130 @@ static inline int skip_to_next_line(gzFile file, char *buf, size_t bufsize)
 
 static inline int to_integer(double x) { return (int)(x + .5); }
 
+static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
+{
+	char buf[256];
+	char molecule_id[64] = "";
+	double length = 0;
+	int molecule_length;
+	struct nick_list *list = NULL;
+	while (!gzeof(file)) {
+		++lineNo;
+		if (!gzgets(file, buf, sizeof(buf))) break;
+		if (buf[0] == '#') continue;
+		if (memcmp(buf, "0\t", 2) == 0) { /* molecule info */
+			if (sscanf(buf + 2, "%s%lf", molecule_id, &length) != 2) {
+				fprintf(stderr, "Error: Invalid format on line %lld\n", lineNo);
+				return 1;
+			}
+			molecule_length = to_integer(length);
+			list = nick_map_add_chrom(map, molecule_id);
+			list->chrom_size = molecule_length;
+			if (skip_to_next_line(file, buf, sizeof(buf))) break;
+		} else if (memcmp(buf, "1\t", 2) == 0) { /* label positions */
+			char *p = buf + 2;
+			for (;;) {
+				char *q = p;
+				double value;
+				while (*q && *q != '\t' && *q != '\n') ++q;
+				if (*q == '\0') {
+					size_t size = q - p;
+					memcpy(buf, p, size);
+					if (!gzgets(file, buf + size, sizeof(buf) - size)) break;
+					p = buf + size;
+					continue;
+				}
+				if (sscanf(p, "%lf", &value) != 1) {
+					fprintf(stderr, "Error: Failed in reading float value on line %lld\n", lineNo);
+					return 1;
+				}
+				nick_map_add_site(list, to_integer(value), 0);
+				if (*q == '\t') {
+					p = q + 1;
+				} else {
+					assert(*q == '\n');
+					break;
+				}
+			}
+		} else {
+			if (skip_to_next_line(file, buf, sizeof(buf))) break;
+		}
+	}
+	return 0;
+}
+
+static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
+{
+	char buf[256];
+	struct nick_list *list = NULL;
+	char lastMapId[32] = "";
+
+	while (!gzeof(file)) {
+		++lineNo;
+		if (!gzgets(file, buf, sizeof(buf))) break;
+		if (buf[0] == '#') {
+			if (string_begins_as(buf, "# Nickase Recognition Site 1:")) {
+				char *p, *q, *e;
+				p = strchr(buf, ':');
+				assert(p != NULL);
+				++p;
+				while (*p && isspace(*p)) ++p;
+				q = strchr(p, '/');
+				if (q != NULL) {
+					*q++ = '\0';
+					e = strchr(q, '\n');
+					if (e) {
+						*e = '\0';
+					}
+					nick_map_set_enzyme(map, p, q);
+				}
+			}
+			continue;
+		} else {
+			char mapId[32];
+			int ctgLen;
+			int numSites;
+			int siteId;
+			int labelChannel;
+			int position;
+			if (sscanf(buf, "%s%d%d%d%d%d", mapId, &ctgLen, &numSites, &siteId, &labelChannel, &position) != 6) {
+				fprintf(stderr, "Error: Failed to parse data on line %lld\n", lineNo);
+				return -EINVAL;
+			}
+
+			if (strcmp(lastMapId, mapId) != 0) {
+				list = nick_map_add_chrom(map, mapId);
+			}
+			assert(list != NULL);
+
+			if (labelChannel == 1) {
+				nick_map_add_site(list, position, 0);
+			} else {
+				assert(labelChannel == 0);
+				list->chrom_size = position;
+			}
+		}
+	}
+	return 0;
+}
+
+static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
+{
+	char buf[256];
+	while (!gzeof(file)) {
+		++lineNo;
+		if (!gzgets(file, buf, sizeof(buf))) {
+			break;
+		}
+	}
+	return 0;
+}
+
 int nick_map_load(struct nick_map *map, gzFile file)
 {
 	long long lineNo = 0;
 	char buf[256];
 	int format = 0; /* 1. BNX; 2. CMAP; 3. TSV */
-	char molecule_id[64] = "";
-	double length = 0;
-	int molecule_length;
-	struct nick_list *list = NULL;
 
 	while (!gzeof(file)) {
 		++lineNo;
@@ -179,56 +295,21 @@ int nick_map_load(struct nick_map *map, gzFile file)
 		}
 		if (skip_to_next_line(file, buf, sizeof(buf))) break;
 	}
-	if (!format) {
+	if (format == 1) {
+		if (load_bnx(file, lineNo, map)) {
+			return -EINVAL;
+		}
+	} else if (format == 2) {
+		if (load_cmap(file, lineNo, map)) {
+			return -EINVAL;
+		}
+	} else if (format == 3) {
+		if (load_tsv(file, lineNo, map)) {
+			return -EINVAL;
+		}
+	} else {
 		fprintf(stderr, "Error: Unknown input map format!\n");
 		return -EINVAL;
-	}
-	while (!gzeof(file)) {
-		++lineNo;
-		if (!gzgets(file, buf, sizeof(buf))) break;
-		if (buf[0] == '#') continue;
-		if (format == 1) { /* BNX */
-			if (memcmp(buf, "0\t", 2) == 0) { /* molecule info */
-				if (sscanf(buf + 2, "%s%lf", molecule_id, &length) != 2) {
-					fprintf(stderr, "Error: Invalid format on line %lld\n", lineNo);
-					return 1;
-				}
-				molecule_length = to_integer(length);
-				list = nick_map_add_chrom(map, molecule_id);
-				list->chrom_size = molecule_length;
-				if (skip_to_next_line(file, buf, sizeof(buf))) break;
-			} else if (memcmp(buf, "1\t", 2) == 0) { /* label positions */
-				char *p = buf + 2;
-				for (;;) {
-					char *q = p;
-					double value;
-					while (*q && *q != '\t' && *q != '\n') ++q;
-					if (*q == '\0') {
-						size_t size = q - p;
-						memcpy(buf, p, size);
-						if (!gzgets(file, buf + size, sizeof(buf) - size)) break;
-						p = buf + size;
-						continue;
-					}
-					if (sscanf(p, "%lf", &value) != 1) {
-						fprintf(stderr, "Error: Failed in reading float value on line %lld\n", lineNo);
-						return 1;
-					}
-					nick_map_add_site(list, to_integer(value), 0);
-					if (*q == '\t') {
-						p = q + 1;
-					} else {
-						assert(*q == '\n');
-						break;
-					}
-				}
-			} else {
-				if (skip_to_next_line(file, buf, sizeof(buf))) break;
-			}
-		} else if (format == 2) { /* CMAP */
-		} else { /* TSV */
-			assert(format == 3);
-		}
 	}
 	return 0;
 }
@@ -301,9 +382,7 @@ void nick_map_write_cmap(gzFile file, const struct nick_map *map)
 			write_cmap_line(file, p->chrom_name, p->chrom_size,
 					p->size, j, 1, p->data[j].pos, 0, 0, 0);
 		}
-		if (p->size > 0) {
-			write_cmap_line(file, p->chrom_name, p->chrom_size,
-					p->size, p->size + 1, 1, p->chrom_size, 0, 1, 1);
-		}
+		write_cmap_line(file, p->chrom_name, p->chrom_size,
+				p->size, p->size + 1, 0, p->chrom_size, 0, 1, 1);
 	}
 }
