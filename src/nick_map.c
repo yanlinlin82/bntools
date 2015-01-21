@@ -342,7 +342,7 @@ static void write_command_line(gzFile file)
 
 void nick_map_write(gzFile file, const struct nick_map *map, const struct nick_list *list)
 {
-	static const char * const STRAND[] = { "?", "+", "-", "+/-" };
+	static const char * const STRAND[] = { "?", "+", "-", "+/-", "*" };
 	size_t i, j;
 	for (i = 0; i < map->size; ++i) {
 		const struct nick_list *p = &map->data[i];
@@ -360,6 +360,7 @@ void nick_map_write(gzFile file, const struct nick_map *map, const struct nick_l
 				gzprintf(file, "%s\t%d\t%s\n",
 						p->chrom_name, q->pos, STRAND[q->strand]);
 			}
+			gzprintf(file, "%s\t%d\t*\n", p->chrom_name, p->chrom_size);
 		}
 	}
 }

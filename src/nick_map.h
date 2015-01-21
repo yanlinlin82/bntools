@@ -4,9 +4,11 @@
 #include <string.h>
 #include <zlib.h>
 
-#define STRAND_PLUS  1
-#define STRAND_MINUS 2
-#define STRAND_BOTH  (STRAND_PLUS | STRAND_MINUS)
+#define STRAND_UNKNOWN 0
+#define STRAND_PLUS    1
+#define STRAND_MINUS   2
+#define STRAND_BOTH    (STRAND_PLUS | STRAND_MINUS)
+#define STRAND_END     4
 
 struct nick {
 	int pos;
