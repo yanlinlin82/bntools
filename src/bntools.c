@@ -2,11 +2,12 @@
 #include <string.h>
 #include "version.h"
 
-extern int nick_main(int argc, char * const argv[]);
-extern int view_main(int argc, char * const argv[]);
+extern int nick_main (int argc, char * const argv[]);
+extern int view_main (int argc, char * const argv[]);
 extern int align_main(int argc, char * const argv[]);
+extern int map_main  (int argc, char * const argv[]);
 
-int version_main(int argc, char * const argv[])
+static int version_main(int argc, char * const argv[])
 {
 	fprintf(stdout, "%s\n", VERSION);
 	return 0;
@@ -23,6 +24,7 @@ static const struct command CMD[] = {
 	{ "nick",    nick_main,    "Generate restriction map from sequence" },
 	{ "view",    view_main,    "Convert restriction map between formats" },
 	{ "align",   align_main,   "Align between two restriction maps" },
+	{ "map",     map_main,     "Map molecules to reference genome" },
 };
 
 static void print_usage(void)
