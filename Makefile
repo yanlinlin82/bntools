@@ -1,6 +1,12 @@
 CC     = gcc
-CFLAGS = -Wall -O2
+CFLAGS = -Wall
 LIBS   = -lz
+
+ifeq ("${DEBUG}", "")
+CFLAGS += -O2
+else
+CFLAGS += -g
+endif
 
 APP_VER := $(shell src/version.sh)
 
