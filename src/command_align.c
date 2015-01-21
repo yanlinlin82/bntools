@@ -67,8 +67,6 @@ static int align(struct nick_map *map1, struct nick_map *map2)
 		return 1;
 	}
 
-	nick_map_write_cmap(out, map1);
-
 	gzclose(out);
 	return 0;
 }
