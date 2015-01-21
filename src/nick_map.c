@@ -264,10 +264,65 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
 static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 {
 	char buf[256];
+	struct nick_list *list = NULL;
+	char lastChrom[32] = "";
+
 	while (!gzeof(file)) {
 		++lineNo;
-		if (!gzgets(file, buf, sizeof(buf))) {
-			break;
+		if (!gzgets(file, buf, sizeof(buf))) break;
+		if (buf[0] == '#') {
+			if (string_begins_as(buf, "##enzyme=")) {
+				char *p, *q, *e;
+				p = strchr(buf, '=');
+				assert(p != NULL);
+				++p;
+				q = strchr(p, '/');
+				if (q != NULL) {
+					*q++ = '\0';
+					e = strchr(q, '\n');
+					if (e) {
+						*e = '\0';
+					}
+					nick_map_set_enzyme(map, p, q);
+				}
+			}
+			continue;
+		} else {
+			char chrom[32];
+			int pos;
+			char strandText[8];
+			int strand;
+
+			if (sscanf(buf, "%s%d%s", chrom, &pos, strandText) != 3) {
+				fprintf(stderr, "Error: Failed to parse data on line %lld\n", lineNo);
+				return -EINVAL;
+			}
+
+			if (strcmp(strandText, "?") == 0) {
+				strand = STRAND_UNKNOWN;
+			} else if (strcmp(strandText, "+") == 0) {
+				strand = STRAND_PLUS;
+			} else if (strcmp(strandText, "-") == 0) {
+				strand = STRAND_MINUS;
+			} else if (strcmp(strandText, "+/-") == 0) {
+				strand = STRAND_BOTH;
+			} else if (strcmp(strandText, "*") == 0) {
+				strand = STRAND_END;
+			} else {
+				fprintf(stderr, "Error: Unknown strand text '%s' on line %lld\n", strandText, lineNo);
+				return -EINVAL;
+			}
+
+			if (strcmp(lastChrom, chrom) != 0) {
+				list = nick_map_add_chrom(map, chrom);
+			}
+			assert(list != NULL);
+
+			if (strand != STRAND_END) {
+				nick_map_add_site(list, pos, 0);
+			} else {
+				list->chrom_size = pos;
+			}
 		}
 	}
 	return 0;
@@ -289,7 +344,7 @@ int nick_map_load(struct nick_map *map, gzFile file)
 		} else if (string_begins_as(buf, "# CMAP File Version:")) {
 			format = 2;
 			break;
-		} else if (string_begins_as(buf, "##fileformat=MAPv0.l")) {
+		} else if (string_begins_as(buf, "##fileformat=MAPv0.1")) {
 			format = 3;
 			break;
 		}
