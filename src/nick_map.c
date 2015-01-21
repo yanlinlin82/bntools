@@ -1,6 +1,11 @@
+#include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <errno.h>
+#include <sys/types.h>
+#include <unistd.h>
 #include "nick_map.h"
+#include "version.h"
 
 #define MIN_INCREMENT 16
 #define MAX_INCREMENT 128
@@ -140,6 +145,23 @@ static void write_cmap_line(gzFile file, const char *cmap_id, int contig_length,
 			label_channel, position, stddev, coverage, occurance);
 }
 
+static void write_command_line(gzFile file)
+{
+	char name[64] = "";
+	snprintf(name, sizeof(name), "/proc/%d/cmdline", getpid());
+	FILE *fp = fopen(name, "r");
+	if (fp) {
+		gzprintf(file, "##commandline=");
+		while (!feof(fp)) {
+			int c = fgetc(fp);
+			if (c == EOF) break;
+			gzprintf(file, "%c", (c ? c : ' '));
+		}
+		gzprintf(file, "\n");
+		fclose(fp);
+	}
+}
+
 void nick_map_write(gzFile file, const struct nick_map *map, const struct nick_list *list)
 {
 	static const char * const STRAND[] = { "?", "+", "-", "+/-" };
@@ -147,8 +169,12 @@ void nick_map_write(gzFile file, const struct nick_map *map, const struct nick_l
 	for (i = 0; i < map->size; ++i) {
 		const struct nick_list *p = &map->data[i];
 		if (i == 0) {
-			gzprintf(file, "## Enzyme: %s/%s\n", map->enzyme, map->rec_seq);
-			gzprintf(file, "# chrom\tpos\tstrand\n");
+			gzprintf(file, "##fileformat=MAPv0.1\n");
+			gzprintf(file, "##enzyme=%s/%s\n", map->enzyme, map->rec_seq);
+			gzprintf(file, "##program=bntools\n");
+			gzprintf(file, "##programversion="VERSION"\n");
+			write_command_line(file);
+			gzprintf(file, "#chrom\tpos\tstrand\n");
 		}
 		if (!list || list == p) {
 			for (j = 0; j < p->size; ++j) {
