@@ -7,9 +7,14 @@
 #define BASE_T 8
 #define BASE_N (BASE_A | BASE_C | BASE_G | BASE_T)
 
-extern char BASE_MAP[256];
-extern char BASE_REV_MAP[16];
+extern char CHAR_TO_BASE[256];
+extern char BASE_TO_CHAR[16];
+extern char BASE_TO_COMP[16];
 
-void init_base_map(void);
+extern void init_base_map(void);
+
+static inline char char_to_base(char c) { return CHAR_TO_BASE[(int)c]; }
+static inline char base_to_char(char c) { return BASE_TO_CHAR[(int)c]; }
+static inline char base_to_comp(char c) { return BASE_TO_COMP[(int)c]; }
 
 #endif /* __BASE_MAP_H__ */
