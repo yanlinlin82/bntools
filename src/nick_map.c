@@ -247,6 +247,9 @@ static int process_map(gzFile fin, struct nick_map *map, int transform_to_number
 		if (line[0] == '>') {
 			if (list) {
 				list->chrom_size = base_count;
+				if (verbose > 0) {
+					fprintf(stderr, "%d bp\n", base_count);
+				}
 			}
 			if (transform_to_number) {
 				static int number = 0;
@@ -275,6 +278,9 @@ static int process_map(gzFile fin, struct nick_map *map, int transform_to_number
 	}
 	if (list) {
 		list->chrom_size = base_count;
+		if (verbose > 0) {
+			fprintf(stderr, "%d bp\n", base_count);
+		}
 	}
 	return 0;
 }
@@ -634,5 +640,6 @@ int nick_map_save(const struct nick_map *map, const char *filename, int output_c
 	} else {
 		nick_map_write(file, map);
 	}
+	gzclose(file);
 	return 0;
 }

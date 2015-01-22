@@ -2,7 +2,6 @@
 #define __NICK_MAP_H__
 
 #include <string.h>
-#include <zlib.h>
 
 #define MAX_ENZYME_NAME_SIZE 16
 #define MAX_REC_SEQ_SIZE 32

@@ -4,7 +4,6 @@
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h>
-#include <zlib.h>
 #include "nick_map.h"
 
 #define DEF_OUTPUT "stdout"
