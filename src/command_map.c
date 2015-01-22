@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h>
+#include <time.h>
 #include <zlib.h>
 #include "nick_map.h"
 
@@ -31,18 +32,25 @@ struct node {
 	int flag;
 };
 
+static size_t ref_node_count = 0;
+static struct node * ref_nodes = NULL;
+static struct node **ref_index = NULL;
+
 int sort_by_size(const void *a, const void *b)
 {
+	size_t i, j, k;
 	const struct node * const *node_a = a;
 	const struct node * const *node_b = b;
 	if ((*node_a)->size < (*node_b)->size) return -1;
 	if ((*node_a)->size > (*node_b)->size) return 1;
+	i = (*node_a) - ref_nodes;
+	j = (*node_b) - ref_nodes;
+	for (k = 0; ; ++k) {
+		if (ref_nodes[i + k].size < ref_nodes[j + k].size) return -1;
+		if (ref_nodes[i + k].size > ref_nodes[j + k].size) return 1;
+	}
 	return 0;
 }
-
-static size_t ref_node_count = 0;
-static struct node * ref_nodes = NULL;
-static struct node **ref_index = NULL;
 
 static void generate_ref_nodes(const struct nick_map *ref)
 {
@@ -104,7 +112,9 @@ static void map(struct nick_map *ref, struct nick_list *qry_item)
 	size_t qstart = 1;
 
 	if (qry_item->size < MIN_MATCH) {
-		fprintf(stderr, "Warning: Skip '%s' for less than %d labels!\n", qry_item->fragment_name, MIN_MATCH);
+		if (verbose) {
+			fprintf(stderr, "Warning: Skip '%s' for less than %d labels!\n", qry_item->fragment_name, MIN_MATCH);
+		}
 		return;
 	}
 
@@ -177,7 +187,12 @@ int map_main(int argc, char * const argv[])
 	if (nick_map_load(&ref, argv[optind])) {
 		return 1;
 	}
-	generate_ref_nodes(&ref);
+	{
+		clock_t t0 = clock();
+		generate_ref_nodes(&ref);
+		printf("generating ref_nodes used %ld ms.\n",
+				(clock() - t0) * 1000 / CLOCKS_PER_SEC);
+	}
 
 	nick_map_init(&qry);
 	if (nick_map_load(&qry, argv[optind + 1])) {
