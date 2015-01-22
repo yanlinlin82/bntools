@@ -483,7 +483,7 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 			assert(list != NULL);
 
 			if (strand != STRAND_END) {
-				nick_map_add_site(list, pos, 0);
+				nick_map_add_site(list, pos, strand);
 			} else {
 				list->chrom_size = pos;
 			}
