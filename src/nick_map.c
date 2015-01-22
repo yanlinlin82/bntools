@@ -517,6 +517,68 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 	return 0;
 }
 
+static int load_simple(gzFile file, struct nick_map *map)
+{
+	struct nick_list *list = NULL;
+	char name[32] = "";
+	double sum = 0;
+	double value;
+	int count = 0, i = 0, err, c;
+	char buf[256];
+	size_t pos = 0;
+
+	while ((c = gzgetc(file)) != EOF) {
+		if (!isspace(c)) {
+			if (pos >= sizeof(buf)) {
+				fprintf(stderr, "Error: Unexpected long word!\n");
+				return -EINVAL;
+			}
+			buf[pos++] = (char)c;
+		} else if (pos > 0) {
+			buf[pos] = '\0';
+			pos = 0;
+			if (!name[0]) {
+				snprintf(name, sizeof(name), "%s", buf);
+				count = 0;
+				i = 0;
+				list = nick_map_add_fragment(map, name);
+				if (!list) {
+					return -ENOMEM;
+				}
+			} else if (count == 0) {
+				count = atoi(buf);
+				i = 0;
+				if (count <= 0) {
+					name[0] = '\0';
+					count = 0;
+				}
+			} else {
+				assert(list != NULL);
+				value = atof(buf);
+				sum += value;
+				++i;
+				if (i < count) {
+					if ((err = nick_map_add_site(list,
+							to_integer(sum), STRAND_UNKNOWN)) != 0) {
+						return err;
+					}
+				} else {
+					list->fragment_size = to_integer(sum);
+					sum = 0;
+					name[0] = '\0';
+					count = 0;
+					i = 0;
+				}
+			}
+		}
+	}
+	if (name[0] || i < count) {
+		fprintf(stderr, "Error: Unexpected EOF!\n");
+		return -EINVAL;
+	}
+	return 0;
+}
+
 int nick_map_load(struct nick_map *map, const char *filename)
 {
 	long long lineNo = 0;
@@ -524,6 +586,7 @@ int nick_map_load(struct nick_map *map, const char *filename)
 	int format = 0; /* 1. BNX; 2. CMAP; 3. TSV */
 	gzFile file;
 	int ret = 0;
+	int c;
 
 	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
 		file = gzdopen(0, "r"); /* stdin */
@@ -531,35 +594,41 @@ int nick_map_load(struct nick_map *map, const char *filename)
 		file = gzopen(filename, "r");
 	}
 	if (!file) {
-		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
+		fprintf(stderr, "Error: Can not open file '%s'\n", filename);
 		return 1;
 	}
 
-	while (!gzeof(file)) {
-		++lineNo;
-		if (!gzgets(file, buf, sizeof(buf))) break;
-		if (buf[0] != '#') break;
-		if (string_begins_as(buf, "# BNX File Version:")) {
-			format = 1;
-			break;
-		} else if (string_begins_as(buf, "# CMAP File Version:")) {
-			format = 2;
-			break;
-		} else if (string_begins_as(buf, "##fileformat=MAPv0.1")) {
-			format = 3;
-			break;
-		}
-		if (skip_to_next_line(file, buf, sizeof(buf))) break;
-	}
-	if (format == 1) {
-		ret = load_bnx(file, lineNo, map);
-	} else if (format == 2) {
-		ret = load_cmap(file, lineNo, map);
-	} else if (format == 3) {
-		ret = load_tsv(file, lineNo, map);
+	c = gzgetc(file);
+	gzungetc(c, file);
+	if (c != '#') {  /* no any comment line, try as the simple format */
+		ret = load_simple(file, map);
 	} else {
-		fprintf(stderr, "Error: Unknown input map format!\n");
-		ret = 1;
+		while (!gzeof(file)) {
+			++lineNo;
+			if (!gzgets(file, buf, sizeof(buf))) break;
+			if (buf[0] != '#') break;
+			if (string_begins_as(buf, "# BNX File Version:")) {
+				format = 1;
+				break;
+			} else if (string_begins_as(buf, "# CMAP File Version:")) {
+				format = 2;
+				break;
+			} else if (string_begins_as(buf, "##fileformat=MAPv0.1")) {
+				format = 3;
+				break;
+			}
+			if (skip_to_next_line(file, buf, sizeof(buf))) break;
+		}
+		if (format == 1) {
+			ret = load_bnx(file, lineNo, map);
+		} else if (format == 2) {
+			ret = load_cmap(file, lineNo, map);
+		} else if (format == 3) {
+			ret = load_tsv(file, lineNo, map);
+		} else {
+			fprintf(stderr, "Error: Unknown input map format!\n");
+			ret = 1;
+		}
 	}
 	if (ret) {
 		nick_map_free(map);
