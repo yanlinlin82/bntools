@@ -13,10 +13,10 @@ static int verbose = 0;
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
-			"Usage: bntools align [options] <input_a> [<input_b>]\n"
+			"Usage: bntools align [options] <map_a> [<map_b>]\n"
 			"\n"
 			"Options:\n"
-			"   <input_x>   input map file(s), in tsv/cmap/bnx format\n"
+			"   <map_a/b>   input map file(s), in tsv/cmap/bnx format\n"
 			"   -v          show verbose message\n"
 			"\n");
 }
