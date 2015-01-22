@@ -600,7 +600,9 @@ static void nick_map_write(gzFile file, const struct nick_map *map)
 	size_t i, j;
 
 	gzprintf(file, "##fileformat=MAPv0.1\n");
-	gzprintf(file, "##enzyme=%s/%s\n", map->enzyme, map->rec_seq);
+	if (map->enzyme[0] && map->rec_seq[0]) {
+		gzprintf(file, "##enzyme=%s/%s\n", map->enzyme, map->rec_seq);
+	}
 	gzprintf(file, "##program=bntools\n");
 	gzprintf(file, "##programversion="VERSION"\n");
 	write_command_line(file);
@@ -625,7 +627,11 @@ static void nick_map_write_cmap(gzFile file, const struct nick_map *map)
 
 	gzprintf(file, "# CMAP File Version:  0.1\n");
 	gzprintf(file, "# Label Channels:  1\n");
-	gzprintf(file, "# Nickase Recognition Site 1:  %s/%s\n", map->enzyme, map->rec_seq);
+	if (map->enzyme[0] && map->rec_seq[0]) {
+		gzprintf(file, "# Nickase Recognition Site 1:  %s/%s\n", map->enzyme, map->rec_seq);
+	} else {
+		gzprintf(file, "# Nickase Recognition Site 1:  unknown\n");
+	}
 	gzprintf(file, "# Number of Consensus Nanomaps:    %zd\n", map->size);
 	gzprintf(file, "#h CMapId\tContigLength\tNumSites\tSiteID"
 			"\tLabelChannel\tPosition\tStdDev\tCoverage\tOccurrence\n");
