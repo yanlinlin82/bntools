@@ -22,8 +22,8 @@ struct nick_list {
 	size_t capacity;
 	size_t size;
 	struct nick *data;
-	char *chrom_name;
-	int chrom_size;
+	char *fragment_name;
+	int fragment_size;
 };
 
 struct nick_map {
@@ -45,7 +45,7 @@ void nick_map_free(struct nick_map *map);
 
 int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *rec_seq);
 
-struct nick_list *nick_map_add_chrom(struct nick_map *map, const char *chrom);
+struct nick_list *nick_map_add_fragment(struct nick_map *map, const char *name);
 int nick_map_add_site(struct nick_list *p, int pos, int strand);
 
 int nick_map_load(struct nick_map *map, const char *filename);

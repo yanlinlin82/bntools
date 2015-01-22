@@ -75,7 +75,7 @@ void nick_map_free(struct nick_map *map)
 	size_t i;
 
 	for (i = 0; i < map->size; ++i) {
-		free(map->data[i].chrom_name);
+		free(map->data[i].fragment_name);
 		free(map->data[i].data);
 	}
 	free(map->data);
@@ -142,13 +142,13 @@ int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *re
 	return 0;
 }
 
-struct nick_list *nick_map_add_chrom(struct nick_map *map, const char *chrom)
+struct nick_list *nick_map_add_fragment(struct nick_map *map, const char *name)
 {
 	struct nick_list *p;
 	size_t i;
 
 	for (i = 0; i < map->size; ++i) {
-		if (strcmp(map->data[i].chrom_name, chrom) == 0) {
+		if (strcmp(map->data[i].fragment_name, name) == 0) {
 			return &map->data[i];
 		}
 	}
@@ -158,8 +158,8 @@ struct nick_list *nick_map_add_chrom(struct nick_map *map, const char *chrom)
 
 	p = &map->data[i];
 	memset(p, 0, sizeof(struct nick_list));
-	p->chrom_name = strdup(chrom);
-	if (!p->chrom_name) {
+	p->fragment_name = strdup(name);
+	if (!p->fragment_name) {
 		return NULL;
 	}
 	++map->size;
@@ -223,7 +223,7 @@ struct buffer {
 };
 
 static int process_line(struct nick_map *map, struct nick_list *list,
-		const char *line, const char *chrom, int base_count, struct buffer *buf)
+		const char *line, int base_count, struct buffer *buf)
 {
 	const char *p;
 	int strand;
@@ -257,7 +257,7 @@ static int process_line(struct nick_map *map, struct nick_list *list,
 static int process_map(gzFile fin, struct nick_map *map, int transform_to_number, int verbose)
 {
 	struct nick_list *list = NULL;
-	char chrom[MAX_CHROM_NAME_SIZE] = "";
+	char name[MAX_CHROM_NAME_SIZE] = "";
 	int base_count = 0;
 	struct buffer buf = { };
 
@@ -266,30 +266,30 @@ static int process_map(gzFile fin, struct nick_map *map, int transform_to_number
 		if (!gzgets(fin, line, sizeof(line))) break;
 		if (line[0] == '>') {
 			if (list) {
-				list->chrom_size = base_count;
+				list->fragment_size = base_count;
 				if (verbose > 0) {
 					fprintf(stderr, "%d bp\n", base_count);
 				}
 			}
 			if (transform_to_number) {
 				static int number = 0;
-				snprintf(chrom, sizeof(chrom), "%d", ++number);
+				snprintf(name, sizeof(name), "%d", ++number);
 			} else {
 				char *p = line + 1;
 				while (*p && !isspace(*p)) ++p;
 				*p = '\0';
-				snprintf(chrom, sizeof(chrom), line + 1);
+				snprintf(name, sizeof(name), line + 1);
 			}
 			if (verbose > 0) {
-				fprintf(stderr, "Loading sequence '%s' ... ", chrom);
+				fprintf(stderr, "Loading fragment '%s' ... ", name);
 			}
 			base_count = 0;
-			list = nick_map_add_chrom(map, chrom);
+			list = nick_map_add_fragment(map, name);
 			if (!list) {
 				return -ENOMEM;
 			}
 		} else {
-			int n = process_line(map, list, line, chrom, base_count, &buf);
+			int n = process_line(map, list, line, base_count, &buf);
 			if (n < 0) {
 				return n;
 			}
@@ -297,7 +297,7 @@ static int process_map(gzFile fin, struct nick_map *map, int transform_to_number
 		}
 	}
 	if (list) {
-		list->chrom_size = base_count;
+		list->fragment_size = base_count;
 		if (verbose > 0) {
 			fprintf(stderr, "%d bp\n", base_count);
 		}
@@ -355,8 +355,8 @@ static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 				return 1;
 			}
 			molecule_length = to_integer(length);
-			list = nick_map_add_chrom(map, molecule_id);
-			list->chrom_size = molecule_length;
+			list = nick_map_add_fragment(map, molecule_id);
+			list->fragment_size = molecule_length;
 			if (skip_to_next_line(file, buf, sizeof(buf))) break;
 		} else if (memcmp(buf, "1\t", 2) == 0) { /* label positions */
 			char *p = buf + 2;
@@ -432,7 +432,7 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
 			}
 
 			if (strcmp(lastMapId, mapId) != 0) {
-				list = nick_map_add_chrom(map, mapId);
+				list = nick_map_add_fragment(map, mapId);
 			}
 			assert(list != NULL);
 
@@ -440,7 +440,7 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
 				nick_map_add_site(list, position, 0);
 			} else {
 				assert(labelChannel == 0);
-				list->chrom_size = position;
+				list->fragment_size = position;
 			}
 		}
 	}
@@ -451,7 +451,7 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 {
 	char buf[256];
 	struct nick_list *list = NULL;
-	char lastChrom[32] = "";
+	char lastName[32] = "";
 
 	while (!gzeof(file)) {
 		++lineNo;
@@ -476,12 +476,12 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 			}
 			continue;
 		} else {
-			char chrom[32];
+			char name[32];
 			int pos;
 			char strandText[8];
 			int strand;
 
-			if (sscanf(buf, "%s%d%s", chrom, &pos, strandText) != 3) {
+			if (sscanf(buf, "%s%d%s", name, &pos, strandText) != 3) {
 				fprintf(stderr, "Error: Failed to parse data on line %lld\n", lineNo);
 				return -EINVAL;
 			}
@@ -501,15 +501,16 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 				return -EINVAL;
 			}
 
-			if (strcmp(lastChrom, chrom) != 0) {
-				list = nick_map_add_chrom(map, chrom);
+			if (strcmp(lastName, name) != 0) {
+				list = nick_map_add_fragment(map, name);
+				snprintf(lastName, sizeof(lastName), "%s", name);
 			}
 			assert(list != NULL);
 
 			if (strand != STRAND_END) {
 				nick_map_add_site(list, pos, strand);
 			} else {
-				list->chrom_size = pos;
+				list->fragment_size = pos;
 			}
 		}
 	}
@@ -600,18 +601,18 @@ static void nick_map_write(gzFile file, const struct nick_map *map)
 	gzprintf(file, "##program=bntools\n");
 	gzprintf(file, "##programversion="VERSION"\n");
 	write_command_line(file);
-	gzprintf(file, "#chrom\tpos\tstrand\tsize\n");
+	gzprintf(file, "#name\tpos\tstrand\tsize\n");
 
 	for (i = 0; i < map->size; ++i) {
 		const struct nick_list *p = &map->data[i];
 		for (j = 0; j < p->size; ++j) {
 			const struct nick *q = &p->data[j];
 			gzprintf(file, "%s\t%d\t%s\t%d\n",
-					p->chrom_name, q->pos, STRAND[q->strand],
+					p->fragment_name, q->pos, STRAND[q->strand],
 					q->pos - (j == 0 ? 0 : p->data[j - 1].pos));
 		}
-		gzprintf(file, "%s\t%d\t*\t%d\n", p->chrom_name, p->chrom_size,
-				p->chrom_size - (p->size == 0 ? 0 : p->data[p->size - 1].pos));
+		gzprintf(file, "%s\t%d\t*\t%d\n", p->fragment_name, p->fragment_size,
+				p->fragment_size - (p->size == 0 ? 0 : p->data[p->size - 1].pos));
 	}
 }
 
@@ -630,11 +631,11 @@ static void nick_map_write_cmap(gzFile file, const struct nick_map *map)
 	for (i = 0; i < map->size; ++i) {
 		const struct nick_list *p = &map->data[i];
 		for (j = 0; j < p->size; ++j) {
-			write_cmap_line(file, p->chrom_name, p->chrom_size,
+			write_cmap_line(file, p->fragment_name, p->fragment_size,
 					p->size, j, 1, p->data[j].pos, 0, 0, 0);
 		}
-		write_cmap_line(file, p->chrom_name, p->chrom_size,
-				p->size, p->size + 1, 0, p->chrom_size, 0, 1, 1);
+		write_cmap_line(file, p->fragment_name, p->fragment_size,
+				p->size, p->size + 1, 0, p->fragment_size, 0, 1, 1);
 	}
 }
 
