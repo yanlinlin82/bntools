@@ -561,6 +561,9 @@ int nick_map_load(struct nick_map *map, const char *filename)
 		fprintf(stderr, "Error: Unknown input map format!\n");
 		ret = 1;
 	}
+	if (ret) {
+		nick_map_free(map);
+	}
 	gzclose(file);
 	return ret;
 }
