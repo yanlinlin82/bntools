@@ -88,8 +88,6 @@ int nick_main(int argc, char * const argv[])
 		return 1;
 	}
 
-	base_map_init();
-
 	nick_map_init(&map);
 
 	if ((ret = nick_map_set_enzyme(&map, enzyme, rec_seq)) != 0) {

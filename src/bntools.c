@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <string.h>
 #include "version.h"
+#include "base_map.h"
 
 extern int nick_main (int argc, char * const argv[]);
 extern int view_main (int argc, char * const argv[]);
@@ -66,6 +67,7 @@ int main(int argc, char * const argv[])
 	if (argc == 1) {
 		print_usage();
 	} else {
+		base_map_init();
 		for (i = 0; i < sizeof(CMD) / sizeof(CMD[0]); ++i) {
 			if (strcmp(argv[1], CMD[i].name) == 0) {
 				return (*CMD[i].proc)(argc - 1, argv + 1);
