@@ -368,7 +368,7 @@ static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 					size_t size = q - p;
 					memcpy(buf, p, size);
 					if (!gzgets(file, buf + size, sizeof(buf) - size)) break;
-					p = buf + size;
+					p = buf;
 					continue;
 				}
 				if (sscanf(p, "%lf", &value) != 1) {

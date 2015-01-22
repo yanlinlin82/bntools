@@ -168,7 +168,6 @@ int map_main(int argc, char * const argv[])
 {
 	struct nick_map ref, qry;
 	size_t i;
-	int ret;
 
 	if (check_options(argc, argv)) {
 		return 1;
@@ -193,5 +192,5 @@ int map_main(int argc, char * const argv[])
 
 	nick_map_free(&qry);
 	nick_map_free(&ref);
-	return ret;
+	return 0;
 }
