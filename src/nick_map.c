@@ -576,16 +576,18 @@ static void nick_map_write(gzFile file, const struct nick_map *map)
 	gzprintf(file, "##program=bntools\n");
 	gzprintf(file, "##programversion="VERSION"\n");
 	write_command_line(file);
-	gzprintf(file, "#chrom\tpos\tstrand\n");
+	gzprintf(file, "#chrom\tpos\tstrand\tsize\n");
 
 	for (i = 0; i < map->size; ++i) {
 		const struct nick_list *p = &map->data[i];
 		for (j = 0; j < p->size; ++j) {
 			const struct nick *q = &p->data[j];
-			gzprintf(file, "%s\t%d\t%s\n",
-					p->chrom_name, q->pos, STRAND[q->strand]);
+			gzprintf(file, "%s\t%d\t%s\t%d\n",
+					p->chrom_name, q->pos, STRAND[q->strand],
+					q->pos - (j == 0 ? 0 : p->data[j - 1].pos));
 		}
-		gzprintf(file, "%s\t%d\t*\n", p->chrom_name, p->chrom_size);
+		gzprintf(file, "%s\t%d\t*\t%d\n", p->chrom_name, p->chrom_size,
+				p->chrom_size - (p->size == 0 ? 0 : p->data[p->size - 1].pos));
 	}
 }
 
