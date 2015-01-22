@@ -6,7 +6,6 @@
 #include <errno.h>
 #include <getopt.h>
 #include <limits.h>
-#include <zlib.h>
 #include "base_map.h"
 #include "nick_map.h"
 
@@ -15,10 +14,6 @@
 #define DEF_ENZ_NAME "BspQI"
 #define DEF_REC_SEQ "GCTCTTCN^"
 
-#define MAX_ENZYME_NAME_SIZE 16
-#define MAX_REC_SEQ_SIZE 32
-#define MAX_CHROM_NAME_SIZE 64
-
 static int verbose = 0;
 
 static char enzyme[MAX_ENZYME_NAME_SIZE] = DEF_ENZ_NAME;
@@ -26,51 +21,6 @@ static char rec_seq[MAX_REC_SEQ_SIZE] = DEF_REC_SEQ;
 static char output_file[PATH_MAX] = DEF_OUTPUT;
 static int output_cmap = 0;
 static int transform_to_number = 0;
-
-static char rec_bases[MAX_REC_SEQ_SIZE] = { };
-static int rec_seq_size = 0;
-static int nick_offset = -1;
-static int palindrome = 1;
-
-static char buf[MAX_REC_SEQ_SIZE * 2];
-static int pos = 0;
-
-struct nick_map map = { };
-
-static int prepare_rec_seq(void)
-{
-	int i;
-	for (i = 0, rec_seq_size = 0; rec_seq[i]; ++i) {
-		if (rec_seq[i] == '^') {
-			if (nick_offset >= 0) {
-				fprintf(stderr, "Error: Invalid recognition sequence '%s'\n", rec_seq);
-				return 1;
-			}
-			nick_offset = i;
-		} else {
-			char c = char_to_base(rec_seq[i]);
-			if (c == 0) {
-				fprintf(stderr, "Error: Invalid character '%c' in recognition sequence '%s'\n", rec_seq[i], rec_seq);
-				return 1;
-			}
-			if (rec_seq_size >= sizeof(rec_bases)) {
-				fprintf(stderr, "Error: recognition sequence is too long\n");
-				return 1;
-			}
-			rec_bases[rec_seq_size++] = c;
-		}
-	}
-	if (nick_offset < 0) {
-		nick_offset = 0;
-	}
-	for (i = 0; i < rec_seq_size / 2; ++i) {
-		if (rec_bases[i] != base_to_comp(rec_bases[rec_seq_size - i - 1])) {
-			palindrome = 0;
-			break;
-		}
-	}
-	return 0;
-}
 
 static void print_usage(void)
 {
@@ -88,159 +38,7 @@ static void print_usage(void)
 			"\n");
 }
 
-static int seq_match(const char *ref, const char *query, size_t len, int strand)
-{
-	size_t i;
-	assert(strand == STRAND_PLUS || strand == STRAND_MINUS);
-	for (i = 0; i < len; ++i) {
-		char r = ref[i];
-		char q = (strand == STRAND_PLUS ? query[i] : base_to_comp(query[len - i - 1]));
-		if ((r & q) != r) {
-			return 0;
-		}
-	}
-	return 1;
-}
-
-static int process_line(struct nick_list *list, const char *line, const char *chrom, int base_count)
-{
-	const char *p;
-	int strand;
-	int matched;
-	for (p = line; *p; ++p) {
-		if (isspace(*p)) {
-			continue;
-		}
-		if (pos >= sizeof(buf)) {
-			memcpy(buf, buf + sizeof(buf) - rec_seq_size + 1, rec_seq_size - 1);
-			pos = rec_seq_size - 1;
-		}
-		++base_count;
-		buf[pos++] = char_to_base(*p);
-		if (pos < rec_seq_size) {
-			continue;
-		}
-		for (strand = STRAND_PLUS, matched = 0; strand <= STRAND_MINUS; ++strand) {
-			if (matched || seq_match(buf + pos - rec_seq_size, rec_bases, rec_seq_size, strand)) {
-				int site_pos = base_count - (strand == STRAND_MINUS ? nick_offset : (rec_seq_size - nick_offset));
-				if (nick_map_add_site(list, site_pos, strand)) {
-					return -ENOMEM;
-				}
-				matched = palindrome;
-			}
-		}
-	}
-	return base_count;
-}
-
-static int process(gzFile fin, gzFile fout)
-{
-	struct nick_list *list = NULL;
-	char chrom[MAX_CHROM_NAME_SIZE] = "";
-	int base_count = 0;
-	while (!gzeof(fin)) {
-		char buf[256];
-		if (!gzgets(fin, buf, sizeof(buf))) break;
-		if (buf[0] == '>') {
-			if (list) {
-				list->chrom_size = base_count;
-				if (!output_cmap) {
-					nick_map_write(fout, &map, list);
-				}
-			}
-			if (transform_to_number) {
-				static int number = 0;
-				snprintf(chrom, sizeof(chrom), "%d", ++number);
-			} else {
-				char *p = buf + 1;
-				while (*p && !isspace(*p)) ++p;
-				*p = '\0';
-				snprintf(chrom, sizeof(chrom), buf + 1);
-			}
-			if (verbose > 0) {
-				fprintf(stderr, "Loading sequence '%s' ... ", chrom);
-			}
-			base_count = 0;
-			list = nick_map_add_chrom(&map, chrom);
-			if (!list) {
-				return -ENOMEM;
-			}
-		} else {
-			int n = process_line(list, buf, chrom, base_count);
-			if (n < 0) {
-				return n;
-			}
-			base_count = n;
-		}
-	}
-	if (list) {
-		list->chrom_size = base_count;
-		if (!output_cmap) {
-			nick_map_write(fout, &map, list);
-		}
-	}
-	if (output_cmap) {
-		nick_map_write_cmap(fout, &map);
-	}
-	return 0;
-}
-
-static int nick(const char *in)
-{
-	gzFile fin = NULL;
-	gzFile fout = NULL;
-	int c;
-
-	if (strcmp(in, "-") == 0 || strcmp(in, "stdin") == 0) {
-		fin = gzdopen(0, "r"); /* stdin */
-	} else {
-		fin = gzopen(in, "r");
-	}
-	if (!fin) {
-		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", in);
-		return 1;
-	}
-
-	if (strcmp(output_file, "-") == 0 || strcmp(output_file, "stdout") == 0) {
-		fout = gzdopen(1, "wT"); /* stdout, without compression */
-	} else {
-		size_t len = strlen(output_file);
-		if (len > 3 && strcmp(output_file + len - 3, ".gz") == 0) {
-			fout = gzopen(output_file, "wx"); /* 'x' is for checking existance */
-		} else {
-			fout = gzopen(output_file, "wxT"); /* without compression */
-		}
-	}
-	if (!fout) {
-		if (errno == EEXIST) {
-			fprintf(stderr, "Error: Output file '%s' has already existed!\n", output_file);
-		} else {
-			fprintf(stderr, "Error: Can not open output file '%s'\n", output_file);
-		}
-		gzclose(fin);
-		return 1;
-	}
-
-	c = gzgetc(fin);
-	if (c != '>') {
-		fprintf(stderr, "Error: File '%s' is not in FASTA format\n", in);
-		gzclose(fout);
-		gzclose(fin);
-		return 1;
-	}
-	gzungetc(c, fin);
-
-	if (process(fin, fout)) {
-		return 1;
-	}
-
-	gzclose(fout);
-	gzclose(fin);
-	nick_map_free(&map);
-	return 0;
-}
-
-int nick_main(int argc, char * const argv[])
+static int check_options(int argc, char * const argv[])
 {
 	int c;
 	while ((c = getopt(argc, argv, "o:f:e:r:nv")) != -1) {
@@ -274,23 +72,38 @@ int nick_main(int argc, char * const argv[])
 			return 1;
 		}
 	}
-	if (argc != optind + 1) {
+	if (optind >= argc) {
 		print_usage();
 		return 1;
 	}
+	return 0;
+}
 
-	init_base_map();
+int nick_main(int argc, char * const argv[])
+{
+	struct nick_map map;
+	int i, ret = 0;
 
-	if (prepare_rec_seq() != 0) {
+	if (check_options(argc, argv)) {
 		return 1;
 	}
+
+	base_map_init();
 
 	nick_map_init(&map);
 
-	if (nick_map_set_enzyme(&map, enzyme, rec_seq)) {
-		nick_map_free(&map);
-		return 1;
+	if ((ret = nick_map_set_enzyme(&map, enzyme, rec_seq)) != 0) {
+		goto final;
 	}
 
-	return nick(argv[optind]);
+	for (i = optind; i < argc; ++i) {
+		if ((ret = nick_map_load_fasta(&map, argv[i],
+				transform_to_number, verbose)) != 0) {
+			goto final;
+		}
+	}
+	ret = nick_map_save(&map, output_file, output_cmap);
+final:
+	nick_map_free(&map);
+	return ret;
 }

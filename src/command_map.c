@@ -11,103 +11,28 @@
 
 static int verbose = 0;
 
-static char output_file[PATH_MAX] = DEF_OUTPUT;
-
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
 			"Usage: bntools map [options] <ref> <query>\n"
 			"\n"
 			"Options:\n"
-			"   <ref>     reference genome, in fasta/tsv/cmap format\n"
+			"   <ref>     reference genome, in tsv/cmap format\n"
 			"   <query>   query molecules/contigs, in tsv/cmap/bnx format\n"
-			"   -o FILE   output file ["DEF_OUTPUT"]\n"
 			"   -v        show verbose message\n"
 			"\n");
 }
 
-static int load_map(struct nick_map *map, const char *filename)
-{
-	gzFile file;
-	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
-		file = gzdopen(0, "r"); /* stdin */
-	} else {
-		file = gzopen(filename, "r");
-	}
-	if (!file) {
-		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
-		return 1;
-	}
-
-	if (nick_map_load(map, file)) {
-		gzclose(file);
-		return 1;
-	}
-
-	gzclose(file);
-	return 0;
-}
-
 static int map(struct nick_map *map1, struct nick_map *map2)
 {
-	gzFile out;
-	if (strcmp(output_file, "-") == 0 || strcmp(output_file, "stdout") == 0) {
-		out = gzdopen(1, "wT"); /* stdout, without compression */
-	} else {
-		size_t len = strlen(output_file);
-		if (len > 3 && strcmp(output_file + len - 3, ".gz") == 0) {
-			out = gzopen(output_file, "wx"); /* 'x' is for checking existance */
-		} else {
-			out = gzopen(output_file, "wxT"); /* without compression */
-		}
-	}
-	if (!out) {
-		if (errno == EEXIST) {
-			fprintf(stderr, "Error: Output file '%s' has already existed!\n", output_file);
-		} else {
-			fprintf(stderr, "Error: Can not open output file '%s'\n", output_file);
-		}
-		return 1;
-	}
-
-	gzclose(out);
 	return 0;
 }
 
-static int process(const char *ref, const char *mol)
-{
-	struct nick_map map1, map2;
-	int ret;
-
-	nick_map_init(&map1);
-	nick_map_init(&map2);
-
-	if (load_map(&map1, ref)) {
-		nick_map_free(&map1);
-		return 1;
-	}
-	if (load_map(&map2, mol)) {
-		nick_map_free(&map2);
-		nick_map_free(&map1);
-		return 1;
-	}
-
-	ret = map(&map1, &map2);
-
-	nick_map_free(&map2);
-	nick_map_free(&map1);
-
-	return ret;
-}
-
-int map_main(int argc, char * const argv[])
+static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "o:v")) != -1) {
+	while ((c = getopt(argc, argv, "v")) != -1) {
 		switch (c) {
-		case 'o':
-			snprintf(output_file, sizeof(output_file), "%s", optarg);
-			break;
 		case 'v':
 			++verbose;
 			break;
@@ -119,5 +44,33 @@ int map_main(int argc, char * const argv[])
 		print_usage();
 		return 1;
 	}
-	return process(argv[optind], argv[optind + 1]);
+	return 0;
+}
+
+int map_main(int argc, char * const argv[])
+{
+	struct nick_map map1, map2;
+	int ret;
+
+	if (check_options(argc, argv)) {
+		return 1;
+	}
+
+	nick_map_init(&map1);
+	nick_map_init(&map2);
+	if (nick_map_load(&map1, argv[optind])) {
+		nick_map_free(&map1);
+		return 1;
+	}
+	if (nick_map_load(&map2, argv[optind + 1])) {
+		nick_map_free(&map2);
+		nick_map_free(&map1);
+		return 1;
+	}
+
+	ret = map(&map1, &map2);
+
+	nick_map_free(&map2);
+	nick_map_free(&map1);
+	return ret;
 }

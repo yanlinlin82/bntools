@@ -11,7 +11,7 @@ extern char CHAR_TO_BASE[256];
 extern char BASE_TO_CHAR[16];
 extern char BASE_TO_COMP[16];
 
-extern void init_base_map(void);
+extern void base_map_init(void);
 
 static inline char char_to_base(char c) { return CHAR_TO_BASE[(int)c]; }
 static inline char base_to_char(char c) { return BASE_TO_CHAR[(int)c]; }

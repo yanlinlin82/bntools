@@ -4,7 +4,7 @@ char CHAR_TO_BASE[256] = { };
 char BASE_TO_CHAR[16] = { };
 char BASE_TO_COMP[16] = { };
 
-void init_base_map(void)
+void base_map_init(void)
 {
 	CHAR_TO_BASE['A'] = CHAR_TO_BASE['a'] = BASE_A;
 	CHAR_TO_BASE['C'] = CHAR_TO_BASE['c'] = BASE_C;

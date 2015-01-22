@@ -6,6 +6,8 @@
 #include <errno.h>
 #include <sys/types.h>
 #include <unistd.h>
+#include <zlib.h>
+#include "base_map.h"
 #include "nick_map.h"
 #include "version.h"
 
@@ -65,6 +67,7 @@ static int nick_list_reserve(struct nick_list *list, size_t size)
 void nick_map_init(struct nick_map *map)
 {
 	memset(map, 0, sizeof(struct nick_map));
+	map->nick_offset = -1;
 }
 
 void nick_map_free(struct nick_map *map)
@@ -79,15 +82,43 @@ void nick_map_free(struct nick_map *map)
 	map->data = NULL;
 	map->size = 0;
 	map->capacity= 0;
-
-	free(map->enzyme);
-	free(map->rec_seq);
 }
 
 int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *rec_seq)
 {
-	map->enzyme = strdup(enzyme);
-	map->rec_seq = strdup(rec_seq);
+	int i;
+	for (i = 0, map->rec_seq_size = 0; rec_seq[i]; ++i) {
+		if (rec_seq[i] == '^') {
+			if (map->nick_offset >= 0) {
+				fprintf(stderr, "Error: Invalid recognition sequence '%s'\n", rec_seq);
+				return 1;
+			}
+			map->nick_offset = i;
+		} else {
+			char c = char_to_base(rec_seq[i]);
+			if (c == 0) {
+				fprintf(stderr, "Error: Invalid character '%c' in recognition sequence '%s'\n", rec_seq[i], rec_seq);
+				return 1;
+			}
+			if (map->rec_seq_size >= sizeof(map->rec_bases)) {
+				fprintf(stderr, "Error: recognition sequence is too long\n");
+				return 1;
+			}
+			map->rec_bases[map->rec_seq_size++] = c;
+		}
+	}
+	for (i = 0; i < map->rec_seq_size / 2; ++i) {
+		if (map->rec_bases[i] != base_to_comp(map->rec_bases[map->rec_seq_size - i - 1])) {
+			map->palindrome = 0;
+			break;
+		}
+	}
+	snprintf(map->enzyme, sizeof(map->enzyme), "%s", enzyme);
+	snprintf(map->rec_seq, sizeof(map->rec_seq), "%s%s",
+			(map->nick_offset < 0 ? "^" : ""), rec_seq);
+	if (map->nick_offset < 0) {
+		map->nick_offset = 0;
+	}
 	return (map->enzyme && map->rec_seq ? 0 : -ENOMEM);
 }
 
@@ -149,6 +180,133 @@ static inline int skip_to_next_line(gzFile file, char *buf, size_t bufsize)
 	while (strchr(buf, '\n') == NULL) {
 		if (!gzgets(file, buf, bufsize)) return 1;
 	}
+	return 0;
+}
+
+static int seq_match(const char *ref, const char *query, size_t len, int strand)
+{
+	size_t i;
+	assert(strand == STRAND_PLUS || strand == STRAND_MINUS);
+	for (i = 0; i < len; ++i) {
+		char r = ref[i];
+		char q = (strand == STRAND_PLUS ? query[i] : base_to_comp(query[len - i - 1]));
+		if ((r & q) != r) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+struct buffer {
+	char data[MAX_REC_SEQ_SIZE * 2];
+	size_t pos;
+};
+
+static int process_line(struct nick_map *map, struct nick_list *list,
+		const char *line, const char *chrom, int base_count, struct buffer *buf)
+{
+	const char *p;
+	int strand;
+	int matched;
+	for (p = line; *p; ++p) {
+		if (isspace(*p)) {
+			continue;
+		}
+		if (buf->pos >= sizeof(buf->data)) {
+			memcpy(buf->data, buf->data + sizeof(buf->data) - map->rec_seq_size + 1, map->rec_seq_size - 1);
+			buf->pos = map->rec_seq_size - 1;
+		}
+		++base_count;
+		buf->data[buf->pos++] = char_to_base(*p);
+		if (buf->pos < map->rec_seq_size) {
+			continue;
+		}
+		for (strand = STRAND_PLUS, matched = 0; strand <= STRAND_MINUS; ++strand) {
+			if (matched || seq_match(buf->data + buf->pos - map->rec_seq_size, map->rec_bases, map->rec_seq_size, strand)) {
+				int site_pos = base_count - (strand == STRAND_MINUS ? map->nick_offset : (map->rec_seq_size - map->nick_offset));
+				if (nick_map_add_site(list, site_pos, strand)) {
+					return -ENOMEM;
+				}
+				matched = map->palindrome;
+			}
+		}
+	}
+	return base_count;
+}
+
+static int process_map(gzFile fin, struct nick_map *map, int transform_to_number, int verbose)
+{
+	struct nick_list *list = NULL;
+	char chrom[MAX_CHROM_NAME_SIZE] = "";
+	int base_count = 0;
+	struct buffer buf = { };
+
+	while (!gzeof(fin)) {
+		char line[256];
+		if (!gzgets(fin, line, sizeof(line))) break;
+		if (line[0] == '>') {
+			if (list) {
+				list->chrom_size = base_count;
+			}
+			if (transform_to_number) {
+				static int number = 0;
+				snprintf(chrom, sizeof(chrom), "%d", ++number);
+			} else {
+				char *p = line + 1;
+				while (*p && !isspace(*p)) ++p;
+				*p = '\0';
+				snprintf(chrom, sizeof(chrom), line + 1);
+			}
+			if (verbose > 0) {
+				fprintf(stderr, "Loading sequence '%s' ... ", chrom);
+			}
+			base_count = 0;
+			list = nick_map_add_chrom(map, chrom);
+			if (!list) {
+				return -ENOMEM;
+			}
+		} else {
+			int n = process_line(map, list, line, chrom, base_count, &buf);
+			if (n < 0) {
+				return n;
+			}
+			base_count = n;
+		}
+	}
+	if (list) {
+		list->chrom_size = base_count;
+	}
+	return 0;
+}
+
+int nick_map_load_fasta(struct nick_map *map, const char *filename, int transform_to_number, int verbose)
+{
+	gzFile file;
+	int c;
+
+	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
+		file = gzdopen(0, "r"); /* stdin */
+	} else {
+		file = gzopen(filename, "r");
+	}
+	if (!file) {
+		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
+		return 1;
+	}
+
+	c = gzgetc(file);
+	if (c != '>') {
+		fprintf(stderr, "Error: File '%s' is not in FASTA format\n", filename);
+		gzclose(file);
+		return 1;
+	}
+	gzungetc(c, file);
+
+	if (process_map(file, map, transform_to_number, verbose)) {
+		return 1;
+	}
+
+	gzclose(file);
 	return 0;
 }
 
@@ -328,11 +486,23 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 	return 0;
 }
 
-int nick_map_load(struct nick_map *map, gzFile file)
+int nick_map_load(struct nick_map *map, const char *filename)
 {
 	long long lineNo = 0;
 	char buf[256];
 	int format = 0; /* 1. BNX; 2. CMAP; 3. TSV */
+	gzFile file;
+	int ret = 0;
+
+	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
+		file = gzdopen(0, "r"); /* stdin */
+	} else {
+		file = gzopen(filename, "r");
+	}
+	if (!file) {
+		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
+		return 1;
+	}
 
 	while (!gzeof(file)) {
 		++lineNo;
@@ -351,22 +521,17 @@ int nick_map_load(struct nick_map *map, gzFile file)
 		if (skip_to_next_line(file, buf, sizeof(buf))) break;
 	}
 	if (format == 1) {
-		if (load_bnx(file, lineNo, map)) {
-			return -EINVAL;
-		}
+		ret = load_bnx(file, lineNo, map);
 	} else if (format == 2) {
-		if (load_cmap(file, lineNo, map)) {
-			return -EINVAL;
-		}
+		ret = load_cmap(file, lineNo, map);
 	} else if (format == 3) {
-		if (load_tsv(file, lineNo, map)) {
-			return -EINVAL;
-		}
+		ret = load_tsv(file, lineNo, map);
 	} else {
 		fprintf(stderr, "Error: Unknown input map format!\n");
-		return -EINVAL;
+		ret = 1;
 	}
-	return 0;
+	gzclose(file);
+	return ret;
 }
 
 static void write_cmap_line(gzFile file, const char *cmap_id, int contig_length,
@@ -395,32 +560,30 @@ static void write_command_line(gzFile file)
 	}
 }
 
-void nick_map_write(gzFile file, const struct nick_map *map, const struct nick_list *list)
+static void nick_map_write(gzFile file, const struct nick_map *map)
 {
 	static const char * const STRAND[] = { "?", "+", "-", "+/-", "*" };
 	size_t i, j;
+
+	gzprintf(file, "##fileformat=MAPv0.1\n");
+	gzprintf(file, "##enzyme=%s/%s\n", map->enzyme, map->rec_seq);
+	gzprintf(file, "##program=bntools\n");
+	gzprintf(file, "##programversion="VERSION"\n");
+	write_command_line(file);
+	gzprintf(file, "#chrom\tpos\tstrand\n");
+
 	for (i = 0; i < map->size; ++i) {
 		const struct nick_list *p = &map->data[i];
-		if (i == 0) {
-			gzprintf(file, "##fileformat=MAPv0.1\n");
-			gzprintf(file, "##enzyme=%s/%s\n", map->enzyme, map->rec_seq);
-			gzprintf(file, "##program=bntools\n");
-			gzprintf(file, "##programversion="VERSION"\n");
-			write_command_line(file);
-			gzprintf(file, "#chrom\tpos\tstrand\n");
+		for (j = 0; j < p->size; ++j) {
+			const struct nick *q = &p->data[j];
+			gzprintf(file, "%s\t%d\t%s\n",
+					p->chrom_name, q->pos, STRAND[q->strand]);
 		}
-		if (!list || list == p) {
-			for (j = 0; j < p->size; ++j) {
-				const struct nick *q = &p->data[j];
-				gzprintf(file, "%s\t%d\t%s\n",
-						p->chrom_name, q->pos, STRAND[q->strand]);
-			}
-			gzprintf(file, "%s\t%d\t*\n", p->chrom_name, p->chrom_size);
-		}
+		gzprintf(file, "%s\t%d\t*\n", p->chrom_name, p->chrom_size);
 	}
 }
 
-void nick_map_write_cmap(gzFile file, const struct nick_map *map)
+static void nick_map_write_cmap(gzFile file, const struct nick_map *map)
 {
 	size_t i, j;
 
@@ -441,4 +604,35 @@ void nick_map_write_cmap(gzFile file, const struct nick_map *map)
 		write_cmap_line(file, p->chrom_name, p->chrom_size,
 				p->size, p->size + 1, 0, p->chrom_size, 0, 1, 1);
 	}
+}
+
+int nick_map_save(const struct nick_map *map, const char *filename, int output_cmap)
+{
+	gzFile file;
+
+	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdout") == 0) {
+		file = gzdopen(1, "wT"); /* stdout, without compression */
+	} else {
+		size_t len = strlen(filename);
+		if (len > 3 && strcmp(filename + len - 3, ".gz") == 0) {
+			file = gzopen(filename, "wx"); /* 'x' is for checking existance */
+		} else {
+			file = gzopen(filename, "wxT"); /* without compression */
+		}
+	}
+	if (!file) {
+		if (errno == EEXIST) {
+			fprintf(stderr, "Error: Output file '%s' has already existed!\n", filename);
+		} else {
+			fprintf(stderr, "Error: Can not open output file '%s'\n", filename);
+		}
+		return 1;
+	}
+
+	if (output_cmap) {
+		nick_map_write_cmap(file, map);
+	} else {
+		nick_map_write(file, map);
+	}
+	return 0;
 }

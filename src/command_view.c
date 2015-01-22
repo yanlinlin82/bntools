@@ -28,66 +28,7 @@ static void print_usage(void)
 			"\n");
 }
 
-static int load_map(struct nick_map *map, const char *filename)
-{
-	gzFile file;
-	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
-		file = gzdopen(0, "r"); /* stdin */
-	} else {
-		file = gzopen(filename, "r");
-	}
-	if (!file) {
-		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
-		return 1;
-	}
-
-	if (nick_map_load(map, file)) {
-		gzclose(file);
-		return 1;
-	}
-
-	gzclose(file);
-	return 0;
-}
-
-static int view(const char *filename)
-{
-	struct nick_map map;
-	nick_map_init(&map);
-	if (load_map(&map, filename)) {
-		nick_map_free(&map);
-		return 1;
-	}
-	{
-		gzFile out;
-		if (strcmp(output_file, "-") == 0 || strcmp(output_file, "stdout") == 0) {
-			out = gzdopen(1, "wT"); /* stdout, without compression */
-		} else {
-			size_t len = strlen(output_file);
-			if (len > 3 && strcmp(output_file + len - 3, ".gz") == 0) {
-				out = gzopen(output_file, "wx"); /* 'x' is for checking existance */
-			} else {
-				out = gzopen(output_file, "wxT"); /* without compression */
-			}
-		}
-		if (!out) {
-			if (errno == EEXIST) {
-				fprintf(stderr, "Error: Output file '%s' has already existed!\n", output_file);
-			} else {
-				fprintf(stderr, "Error: Can not open output file '%s'\n", output_file);
-			}
-			return 1;
-		}
-
-		nick_map_write_cmap(out, &map);
-
-		gzclose(out);
-	}
-	nick_map_free(&map);
-	return 0;
-}
-
-int view_main(int argc, char * const argv[])
+static int check_options(int argc, char * const argv[])
 {
 	int c;
 	while ((c = getopt(argc, argv, "o:f:v")) != -1) {
@@ -112,10 +53,32 @@ int view_main(int argc, char * const argv[])
 			return 1;
 		}
 	}
-	if (optind + 1 != argc) {
+	if (optind >= argc) {
 		print_usage();
 		return 1;
 	}
+	return 0;
+}
 
-	return view(argv[optind]);
+int view_main(int argc, char * const argv[])
+{
+	struct nick_map map;
+	int i;
+
+	if (check_options(argc, argv)) {
+		return 1;
+	}
+
+	nick_map_init(&map);
+
+	for (i = optind; i < argc; ++i) {
+		if (nick_map_load(&map, argv[i])) {
+			nick_map_free(&map);
+			return 1;
+		}
+	}
+
+	nick_map_save(&map, output_file, output_cmap);
+	nick_map_free(&map);
+	return 0;
 }

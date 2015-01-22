@@ -4,6 +4,10 @@
 #include <string.h>
 #include <zlib.h>
 
+#define MAX_ENZYME_NAME_SIZE 16
+#define MAX_REC_SEQ_SIZE 32
+#define MAX_CHROM_NAME_SIZE 64
+
 #define STRAND_UNKNOWN 0
 #define STRAND_PLUS    1
 #define STRAND_MINUS   2
@@ -27,8 +31,14 @@ struct nick_map {
 	size_t capacity;
 	size_t size;
 	struct nick_list *data;
-	char *enzyme;
-	char *rec_seq;
+
+	char enzyme[MAX_ENZYME_NAME_SIZE];
+	char rec_seq[MAX_REC_SEQ_SIZE];
+
+	char rec_bases[MAX_REC_SEQ_SIZE];
+	int rec_seq_size;
+	int nick_offset;
+	int palindrome;
 };
 
 void nick_map_init(struct nick_map *map);
@@ -39,9 +49,8 @@ int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *re
 struct nick_list *nick_map_add_chrom(struct nick_map *map, const char *chrom);
 int nick_map_add_site(struct nick_list *p, int pos, int strand);
 
-int nick_map_load(struct nick_map *map, gzFile file);
-
-void nick_map_write(gzFile file, const struct nick_map *map, const struct nick_list *list);
-void nick_map_write_cmap(gzFile file, const struct nick_map *map);
+int nick_map_load(struct nick_map *map, const char *filename);
+int nick_map_load_fasta(struct nick_map *map, const char *filename, int transform_to_number, int verbose);
+int nick_map_save(const struct nick_map *map, const char *filename, int output_cmap);
 
 #endif /* __NICK_MAP_H__ */
