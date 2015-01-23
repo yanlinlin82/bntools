@@ -49,7 +49,8 @@ struct nick_list *nick_map_add_fragment(struct nick_map *map, const char *name);
 int nick_map_add_site(struct nick_list *p, int pos, int strand);
 
 int nick_map_load(struct nick_map *map, const char *filename);
-int nick_map_load_fasta(struct nick_map *map, const char *filename, int transform_to_number, int verbose);
+int nick_map_load_fasta(struct nick_map *map, const char *filename,
+		int only_chromosome, int transform_to_number, int verbose);
 int nick_map_save(const struct nick_map *map, const char *filename, int output_cmap);
 
 #endif /* __NICK_MAP_H__ */

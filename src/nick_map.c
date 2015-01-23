@@ -254,21 +254,60 @@ static int process_line(struct nick_map *map, struct nick_list *list,
 	return base_count;
 }
 
-static int process_map(gzFile fin, struct nick_map *map, int transform_to_number, int verbose)
+int nick_map_load_fasta(struct nick_map *map, const char *filename,
+		int only_chromosome, int transform_to_number, int verbose)
 {
+	gzFile file;
 	struct nick_list *list = NULL;
 	char name[MAX_CHROM_NAME_SIZE] = "";
-	int base_count = 0;
 	struct buffer buf = { };
+	int c, ret = 0, base_count = 0;
 
-	while (!gzeof(fin)) {
+	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
+		file = gzdopen(0, "r"); /* stdin */
+	} else {
+		file = gzopen(filename, "r");
+	}
+	if (!file) {
+		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
+		return 1;
+	}
+
+	c = gzgetc(file);
+	if (c != '>') {
+		fprintf(stderr, "Error: File '%s' is not in FASTA format\n", filename);
+		ret = -EINVAL;
+		goto out;
+	}
+	gzungetc(c, file);
+
+	while (!gzeof(file)) {
 		char line[256];
-		if (!gzgets(fin, line, sizeof(line))) break;
+		if (!gzgets(file, line, sizeof(line))) break;
 		if (line[0] == '>') {
 			if (list) {
 				list->fragment_size = base_count;
 				if (verbose > 0) {
 					fprintf(stderr, "%d bp\n", base_count);
+				}
+			}
+			if (only_chromosome) {
+				int skip = 1;
+				const char *p = line + 1;
+				if (memcmp(p, "chr", 3) == 0) {
+					p += 3;
+				}
+				if (p[0] >= '1' && p[0] <= '9' && isspace(p[1])) {
+					skip = 0;
+				} else if ((p[0] == '1' || p[0] == '2') &&
+						(p[1] >= '0' && p[1] <= '9') && isspace(p[2])) {
+					skip = 0;
+				} else if ((p[0] == 'X' || p[1] == 'Y') && isspace(p[1])) {
+					skip = 0;
+				}
+				if (skip) {
+					list = NULL;
+					continue;
 				}
 			}
 			if (transform_to_number) {
@@ -286,12 +325,14 @@ static int process_map(gzFile fin, struct nick_map *map, int transform_to_number
 			base_count = 0;
 			list = nick_map_add_fragment(map, name);
 			if (!list) {
-				return -ENOMEM;
+				ret = -ENOMEM;
+				goto out;
 			}
-		} else {
+		} else if (list) {
 			int n = process_line(map, list, line, base_count, &buf);
 			if (n < 0) {
-				return n;
+				ret = n;
+				goto out;
 			}
 			base_count = n;
 		}
@@ -302,38 +343,9 @@ static int process_map(gzFile fin, struct nick_map *map, int transform_to_number
 			fprintf(stderr, "%d bp\n", base_count);
 		}
 	}
-	return 0;
-}
-
-int nick_map_load_fasta(struct nick_map *map, const char *filename, int transform_to_number, int verbose)
-{
-	gzFile file;
-	int c;
-
-	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
-		file = gzdopen(0, "r"); /* stdin */
-	} else {
-		file = gzopen(filename, "r");
-	}
-	if (!file) {
-		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
-		return 1;
-	}
-
-	c = gzgetc(file);
-	if (c != '>') {
-		fprintf(stderr, "Error: File '%s' is not in FASTA format\n", filename);
-		gzclose(file);
-		return 1;
-	}
-	gzungetc(c, file);
-
-	if (process_map(file, map, transform_to_number, verbose)) {
-		return 1;
-	}
-
+out:
 	gzclose(file);
-	return 0;
+	return ret;
 }
 
 static inline int to_integer(double x) { return (int)(x + .5); }
