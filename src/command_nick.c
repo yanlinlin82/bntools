@@ -4,7 +4,7 @@
 #include <ctype.h>
 #include <assert.h>
 #include <errno.h>
-#include <getopt.h>
+#include <unistd.h>
 #include <limits.h>
 #include "base_map.h"
 #include "nick_map.h"
