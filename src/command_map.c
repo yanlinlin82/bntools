@@ -40,19 +40,19 @@ static void map(struct nick_map *ref, struct fragment *qry_item)
 	int direct;
 	size_t qstart = 1;
 
-	if (qry_item->size < MIN_MATCH) {
+	if (qry_item->nicks.size < MIN_MATCH) {
 		if (verbose) {
-			fprintf(stderr, "Warning: Skip '%s' for less than %d labels!\n", qry_item->fragment_name, MIN_MATCH);
+			fprintf(stderr, "Warning: Skip '%s' for less than %d labels!\n", qry_item->name, MIN_MATCH);
 		}
 		return;
 	}
 
-	intervals = malloc(sizeof(int) * qry_item->size);
-	for (i = 0; i < qry_item->size; ++i) {
-		intervals[i] = qry_item->data[i].pos - (i == 0 ? 0 : qry_item->data[i - 1].pos);
+	intervals = malloc(sizeof(int) * qry_item->nicks.size);
+	for (i = 0; i < qry_item->nicks.size; ++i) {
+		intervals[i] = qry_item->nicks.data[i].pos - (i == 0 ? 0 : qry_item->nicks.data[i - 1].pos);
 	}
 
-	while (qstart + 1 < qry_item->size) {
+	while (qstart + 1 < qry_item->nicks.size) {
 		size_t max_count = 0;
 		for (i = 0; i < ref_node_count; ++i) {
 			if (ref_index[i]->size < intervals[qstart] * (1 - TOLERANCE)) continue;
@@ -61,7 +61,7 @@ static void map(struct nick_map *ref, struct fragment *qry_item)
 			index = ref_index[i] - ref_nodes;
 
 			for (direct = 1; direct >= -1; direct -= 2) {
-				for (j = 1; j < qry_item->size; ++j) {
+				for (j = 1; j < qry_item->nicks.size; ++j) {
 					if (ref_nodes[index + direct * j].size < intervals[qstart + j] * (1 - TOLERANCE)) break;
 					if (ref_nodes[index + direct * j].size > intervals[qstart + j] * (1 + TOLERANCE)) break;
 				}
@@ -69,8 +69,8 @@ static void map(struct nick_map *ref, struct fragment *qry_item)
 					int size = ref_nodes[index + direct * j].pos - ref_nodes[index].pos;
 					if (size < 0) size = -size;
 
-					print_item(qry_item->fragment_name,
-							ref->data[ref_index[i]->chrom].fragment_name,
+					print_item(qry_item->name,
+							ref->fragments.data[ref_index[i]->chrom].name,
 							ref_index[i]->pos, direct,
 							size, j, index, index + direct * (j - 1),
 							qstart, qstart + j - 1);
@@ -125,8 +125,8 @@ int map_main(int argc, char * const argv[])
 	}
 
 	print_header();
-	for (i = 0; i < qry.size; ++i) {
-		map(&ref, &qry.data[i]);
+	for (i = 0; i < qry.fragments.size; ++i) {
+		map(&ref, &qry.fragments.data[i]);
 	}
 
 	nick_map_free(&qry);

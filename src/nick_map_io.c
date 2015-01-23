@@ -119,7 +119,7 @@ int nick_map_load_fasta(struct nick_map *map, const char *filename,
 		if (!gzgets(file, line, sizeof(line))) break;
 		if (line[0] == '>') {
 			if (f) {
-				f->fragment_size = base_count;
+				f->size = base_count;
 				if (verbose > 0) {
 					fprintf(stderr, "%d bp\n", base_count);
 				}
@@ -171,7 +171,7 @@ int nick_map_load_fasta(struct nick_map *map, const char *filename,
 		}
 	}
 	if (f) {
-		f->fragment_size = base_count;
+		f->size = base_count;
 		if (verbose > 0) {
 			fprintf(stderr, "%d bp\n", base_count);
 		}
@@ -201,7 +201,7 @@ static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 			}
 			molecule_length = to_integer(length);
 			f = nick_map_add_fragment(map, molecule_id);
-			f->fragment_size = molecule_length;
+			f->size = molecule_length;
 			if (skip_to_next_line(file, buf, sizeof(buf))) break;
 		} else if (memcmp(buf, "1\t", 2) == 0) { /* label positions */
 			char *p = buf + 2;
@@ -285,7 +285,7 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
 				nick_map_add_site(f, position, 0);
 			} else {
 				assert(labelChannel == 0);
-				f->fragment_size = position;
+				f->size = position;
 			}
 		}
 	}
@@ -355,7 +355,7 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 			if (strand != STRAND_END) {
 				nick_map_add_site(f, pos, strand);
 			} else {
-				f->fragment_size = pos;
+				f->size = pos;
 			}
 		}
 	}
@@ -408,7 +408,7 @@ static int load_simple(gzFile file, struct nick_map *map)
 						return err;
 					}
 				} else {
-					f->fragment_size = to_integer(sum);
+					f->size = to_integer(sum);
 					sum = 0;
 					name[0] = '\0';
 					count = 0;
@@ -484,9 +484,10 @@ int nick_map_load(struct nick_map *map, const char *filename)
 
 static void write_command_line(gzFile file)
 {
-	char name[64] = "";
+	char name[64];
+	FILE *fp;
 	snprintf(name, sizeof(name), "/proc/%d/cmdline", getpid());
-	FILE *fp = fopen(name, "r");
+	fp = fopen(name, "r");
 	if (fp) {
 		gzprintf(file, "##commandline=");
 		while (!feof(fp)) {
@@ -502,11 +503,12 @@ static void write_command_line(gzFile file)
 static int save_as_txt(gzFile file, const struct nick_map *map)
 {
 	size_t i, j;
-	for (i = 0; i < map->size; ++i) {
-		const struct fragment *p = &map->data[i];
-		gzprintf(file, "%s %d", p->fragment_name, p->size);
-		for (j = 0; j < p->size; ++j) {
-			gzprintf(file, " %d", p->data[j].pos - (j == 0 ? 0 : p->data[j - 1].pos));
+	for (i = 0; i < map->fragments.size; ++i) {
+		const struct fragment *f = &map->fragments.data[i];
+		gzprintf(file, "%s %d", f->name, f->nicks.size);
+		for (j = 0; j < f->nicks.size; ++j) {
+			const struct nick *n = f->nicks.data;
+			gzprintf(file, " %d", n[j].pos - (j == 0 ? 0 : n[j - 1].pos));
 		}
 		gzprintf(file, "\n");
 	}
@@ -527,16 +529,17 @@ static int save_as_tsv(gzFile file, const struct nick_map *map)
 	write_command_line(file);
 	gzprintf(file, "#name\tpos\tstrand\tsize\n");
 
-	for (i = 0; i < map->size; ++i) {
-		const struct fragment *p = &map->data[i];
-		for (j = 0; j < p->size; ++j) {
-			const struct nick *q = &p->data[j];
+	for (i = 0; i < map->fragments.size; ++i) {
+		const struct fragment *f = &map->fragments.data[i];
+		for (j = 0; j < f->nicks.size; ++j) {
+			const struct nick *n = f->nicks.data;
 			gzprintf(file, "%s\t%d\t%s\t%d\n",
-					p->fragment_name, q->pos, STRAND[q->strand],
-					q->pos - (j == 0 ? 0 : p->data[j - 1].pos));
+					f->name, n[j].pos, STRAND[n[j].strand],
+					n[j].pos - (j == 0 ? 0 : n[j - 1].pos));
 		}
-		gzprintf(file, "%s\t%d\t*\t%d\n", p->fragment_name, p->fragment_size,
-				p->fragment_size - (p->size == 0 ? 0 : p->data[p->size - 1].pos));
+		gzprintf(file, "%s\t%d\t*\t%d\n", f->name, f->size,
+				f->size - (f->nicks.size == 0 ? 0 :
+				f->nicks.data[f->nicks.size - 1].pos));
 	}
 	return 0;
 }
@@ -552,17 +555,17 @@ static int save_as_bnx(gzFile file, const struct nick_map *map)
 	} else {
 		gzprintf(file, "# Nickase Recognition Site 1: unknown\n");
 	}
-	gzprintf(file, "# Number of Nanomaps: %zd\n", map->size);
+	gzprintf(file, "# Number of Nanomaps: %zd\n", map->fragments.size);
 	gzprintf(file, "#0h\tLabel Channel\tMapID\tLength\n");
 	gzprintf(file, "#0f\tint\tint\tfloat\n");
 	gzprintf(file, "#1h\tLabel Channel\tLabelPositions[N]\n");
 	gzprintf(file, "#1f\tint\tfloat\n");
 
-	for (i = 0; i < map->size; ++i) {
-		const struct fragment *p = &map->data[i];
-		gzprintf(file, "0\t%s\t%zd\n1", p->fragment_name, p->fragment_size);
-		for (j = 0; j < p->size; ++j) {
-			gzprintf(file, "\t%d", p->data[j].pos);
+	for (i = 0; i < map->fragments.size; ++i) {
+		const struct fragment *f = &map->fragments.data[i];
+		gzprintf(file, "0\t%s\t%zd\n1", f->name, f->size);
+		for (j = 0; j < f->nicks.size; ++j) {
+			gzprintf(file, "\t%d", f->nicks.data[j].pos);
 		}
 		gzprintf(file, "\n");
 	}
@@ -589,19 +592,19 @@ static int save_as_cmap(gzFile file, const struct nick_map *map)
 	} else {
 		gzprintf(file, "# Nickase Recognition Site 1:  unknown\n");
 	}
-	gzprintf(file, "# Number of Consensus Nanomaps:    %zd\n", map->size);
+	gzprintf(file, "# Number of Consensus Nanomaps:    %zd\n", map->fragments.size);
 	gzprintf(file, "#h CMapId\tContigLength\tNumSites\tSiteID"
 			"\tLabelChannel\tPosition\tStdDev\tCoverage\tOccurrence\n");
 	gzprintf(file, "#f int\tfloat\tint\tint\tint\tfloat\tfloat\tint\tint\n");
 
-	for (i = 0; i < map->size; ++i) {
-		const struct fragment *p = &map->data[i];
-		for (j = 0; j < p->size; ++j) {
-			write_cmap_line(file, p->fragment_name, p->fragment_size,
-					p->size, j, 1, p->data[j].pos, 0, 0, 0);
+	for (i = 0; i < map->fragments.size; ++i) {
+		const struct fragment *f = &map->fragments.data[i];
+		for (j = 0; j < f->nicks.size; ++j) {
+			write_cmap_line(file, f->name, f->size,
+					f->nicks.size, j, 1, f->nicks.data[j].pos, 0, 0, 0);
 		}
-		write_cmap_line(file, p->fragment_name, p->fragment_size,
-				p->size, p->size + 1, 0, p->fragment_size, 0, 1, 1);
+		write_cmap_line(file, f->name, f->size,
+				f->nicks.size, f->nicks.size + 1, 0, f->size, 0, 1, 1);
 	}
 	return 0;
 }

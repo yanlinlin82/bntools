@@ -5,59 +5,6 @@
 #include "nick_map.h"
 #include "base_map.h"
 
-#define MIN_INCREMENT 16
-#define MAX_INCREMENT 128
-
-static size_t new_capacity(size_t capacity, size_t demand_size)
-{
-	while (capacity < demand_size) {
-		if (capacity < MIN_INCREMENT) {
-			capacity += MIN_INCREMENT;
-		} else if (capacity> MAX_INCREMENT) {
-			capacity += MAX_INCREMENT;
-		} else {
-			capacity *= 2;
-		}
-	}
-	return capacity;
-}
-
-static int nick_map_reserve(struct nick_map *map, size_t size)
-{
-	if (map->capacity < size) {
-		size_t capacity = new_capacity(map->capacity, size);
-		struct fragment *p = malloc(sizeof(struct fragment) * capacity);
-		if (!p) {
-			return -ENOMEM;
-		}
-		if (map->size > 0) {
-			memcpy(p, map->data, sizeof(struct fragment) * map->size);
-		}
-		free(map->data);
-		map->data = p;
-		map->capacity = capacity;
-	}
-	return 0;
-}
-
-static int fragment_reserve(struct fragment *f, size_t size)
-{
-	if (f->capacity < size) {
-		size_t capacity = new_capacity(f->capacity, size);
-		struct nick *p = malloc(sizeof(struct nick) * capacity);
-		if (!p) {
-			return -ENOMEM;
-		}
-		if (f->size > 0) {
-			memcpy(p, f->data, sizeof(struct nick) * f->size);
-		}
-		free(f->data);
-		f->data = p;
-		f->capacity = capacity;
-	}
-	return 0;
-}
-
 void nick_map_init(struct nick_map *map)
 {
 	memset(map, 0, sizeof(struct nick_map));
@@ -67,15 +14,11 @@ void nick_map_init(struct nick_map *map)
 void nick_map_free(struct nick_map *map)
 {
 	size_t i;
-
-	for (i = 0; i < map->size; ++i) {
-		free(map->data[i].fragment_name);
-		free(map->data[i].data);
+	for (i = 0; i < map->fragments.size; ++i) {
+		free(map->fragments.data[i].name);
+		array_free(map->fragments.data[i].nicks);
 	}
-	free(map->data);
-	map->data = NULL;
-	map->size = 0;
-	map->capacity= 0;
+	array_free(map->fragments);
 }
 
 int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *rec_seq)
@@ -138,48 +81,48 @@ int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *re
 
 struct fragment *nick_map_add_fragment(struct nick_map *map, const char *name)
 {
-	struct fragment *p;
+	struct fragment *f;
 	size_t i;
 
-	for (i = 0; i < map->size; ++i) {
-		if (strcmp(map->data[i].fragment_name, name) == 0) {
-			return &map->data[i];
+	for (i = 0; i < map->fragments.size; ++i) {
+		if (strcmp(map->fragments.data[i].name, name) == 0) {
+			return &map->fragments.data[i];
 		}
 	}
-	if (nick_map_reserve(map, i + 1)) {
+	if (array_reserve(map->fragments, i + 1)) {
 		return NULL;
 	}
 
-	p = &map->data[i];
-	memset(p, 0, sizeof(struct fragment));
-	p->fragment_name = strdup(name);
-	if (!p->fragment_name) {
+	f = &map->fragments.data[i];
+	memset(f, 0, sizeof(struct fragment));
+	f->name = strdup(name);
+	if (!f->name) {
 		return NULL;
 	}
-	++map->size;
-	return p;
+	++map->fragments.size;
+	return f;
 }
 
-int nick_map_add_site(struct fragment *p, int pos, int strand)
+int nick_map_add_site(struct fragment *f, int pos, int strand)
 {
 	size_t i, j;
 
-	for (i = p->size; i > 0; --i) {
-		if (p->data[i - 1].pos == pos) {
-			p->data[i - 1].strand |= strand;
+	for (i = f->nicks.size; i > 0; --i) {
+		if (f->nicks.data[i - 1].pos == pos) {
+			f->nicks.data[i - 1].strand |= strand;
 			return 0;
-		} else if (p->data[i - 1].pos < pos) {
+		} else if (f->nicks.data[i - 1].pos < pos) {
 			break;
 		}
 	}
-	if (fragment_reserve(p, p->size + 1)) {
+	if (array_reserve(f->nicks, f->nicks.size + 1)) {
 		return -ENOMEM;
 	}
-	for (j = p->size; j > i; --j) {
-		memcpy(&p->data[j], &p->data[j - 1], sizeof(struct nick));
+	for (j = f->nicks.size; j > i; --j) {
+		memcpy(&f->nicks.data[j], &f->nicks.data[j - 1], sizeof(struct nick));
 	}
-	p->data[i].pos = pos;
-	p->data[i].strand = strand;
-	++p->size;
+	f->nicks.data[i].pos = pos;
+	f->nicks.data[i].strand = strand;
+	++f->nicks.size;
 	return 0;
 }

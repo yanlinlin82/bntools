@@ -3,6 +3,7 @@
 
 #include <stdint.h>
 #include <string.h>
+#include "array.h"
 
 #define MAX_ENZYME_NAME_SIZE 16
 #define MAX_REC_SEQ_SIZE 32
@@ -30,17 +31,13 @@ struct nick {
 };
 
 struct fragment {  /* molecule, contig or chromosome */
-	char *fragment_name;
-	int fragment_size;  /* in bp */
-	size_t capacity;
-	size_t size;
-	struct nick *data;
+	char *name;
+	int size;  /* in bp */
+	array(struct nick) nicks;
 };
 
 struct nick_map {
-	size_t capacity;
-	size_t size;
-	struct fragment *data;
+	array(struct fragment) fragments;
 
 	char enzyme[MAX_ENZYME_NAME_SIZE];
 	char rec_seq[MAX_REC_SEQ_SIZE];
@@ -59,7 +56,7 @@ void nick_map_free(struct nick_map *map);
 int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *rec_seq);
 
 struct fragment *nick_map_add_fragment(struct nick_map *map, const char *name);
-int nick_map_add_site(struct fragment *p, int pos, int strand);
+int nick_map_add_site(struct fragment *f, int pos, int strand);
 
 /* IO functions */
 

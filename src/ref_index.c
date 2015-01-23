@@ -27,20 +27,20 @@ void generate_ref_nodes(const struct nick_map *ref)
 	size_t i, j, k;
 
 	ref_node_count = 0;
-	for (i = 0; i < ref->size; ++i) {
-		ref_node_count += ref->data[i].size;
+	for (i = 0; i < ref->fragments.size; ++i) {
+		ref_node_count += ref->fragments.data[i].nicks.size;
 	}
 
 	ref_nodes = malloc(sizeof(struct node) * ref_node_count);
 	ref_index = malloc(sizeof(struct node *) * ref_node_count);
 
-	for (i = 0, k = 0; i < ref->size; ++i) {
-		const struct fragment *f = &ref->data[i];
-		for (j = 0; j < f->size; ++j) {
+	for (i = 0, k = 0; i < ref->fragments.size; ++i) {
+		const struct fragment *f = &ref->fragments.data[i];
+		for (j = 0; j < f->nicks.size; ++j) {
 			ref_nodes[k].chrom = i;
-			ref_nodes[k].pos = f->data[j].pos;
-			ref_nodes[k].size = f->data[j].pos - (j == 0 ? 0 : f->data[j - 1].pos);
-			ref_nodes[k].flag = (j == 0 ? FIRST_FRAGMENT : 0) | (j + 1 == f->size ? LAST_FRAGMENT : 0);
+			ref_nodes[k].pos = f->nicks.data[j].pos;
+			ref_nodes[k].size = f->nicks.data[j].pos - (j == 0 ? 0 : f->nicks.data[j - 1].pos);
+			ref_nodes[k].flag = (j == 0 ? FIRST_FRAGMENT : 0) | (j + 1 == f->nicks.size ? LAST_FRAGMENT : 0);
 			ref_nodes[k].uniq_count = 0;
 			ref_index[k] = &ref_nodes[k];
 			++k;
@@ -75,7 +75,7 @@ void print_sorted_ref(const struct nick_map *ref)
 
 	for (i = 0; i < ref_node_count; ++i) {
 		fprintf(stdout, "%zd\t%s\t%d\t%d\t%d\t%d\t", i + 1,
-				ref->data[ref_index[i]->chrom].fragment_name,
+				ref->fragments.data[ref_index[i]->chrom].name,
 				ref_index[i]->pos, ref_index[i]->size, ref_index[i]->flag,
 				ref_index[i]->uniq_count);
 		for (j = 0; j < ref_index[i]->uniq_count; ++j) {

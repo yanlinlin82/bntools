@@ -193,16 +193,16 @@ static int align_between_maps(const struct nick_map *map1, const struct nick_map
 	size_t map2_max_count = 0;
 	int *a, *b;
 
-	for (i = 0; i < map1->size; ++i) {
-		if (map1_max_count < map1->data[i].size) {
-			map1_max_count = map1->data[i].size;
+	for (i = 0; i < map1->fragments.size; ++i) {
+		if (map1_max_count < map1->fragments.data[i].nicks.size) {
+			map1_max_count = map1->fragments.data[i].nicks.size;
 		}
 	}
 	++map1_max_count;
 
-	for (i = 0; i < map2->size; ++i) {
-		if (map2_max_count < map2->data[i].size) {
-			map2_max_count = map2->data[i].size;
+	for (i = 0; i < map2->fragments.size; ++i) {
+		if (map2_max_count < map2->fragments.data[i].nicks.size) {
+			map2_max_count = map2->fragments.data[i].nicks.size;
 		}
 	}
 	++map2_max_count;
@@ -216,22 +216,22 @@ static int align_between_maps(const struct nick_map *map1, const struct nick_map
 	}
 
 	fprintf(stdout, "#>0\tAlignmentID\tMol0ID\tMol1ID\n");
-	for (i = 0; i < map1->size; ++i) {
-		const struct fragment *f1 = &map1->data[i];
+	for (i = 0; i < map1->fragments.size; ++i) {
+		const struct fragment *f1 = &map1->fragments.data[i];
 		a[0] = 0;
-		for (k = 0; k < f1->size; ++k) {
-			a[k + 1] = f1->data[k].pos;
+		for (k = 0; k < f1->nicks.size; ++k) {
+			a[k + 1] = f1->nicks.data[k].pos;
 		}
 
-		for (j = (map1 == map2 ? i + 1: 0); j < map2->size; ++j) {
-			const struct fragment *f2 = &map2->data[j];
+		for (j = (map1 == map2 ? i + 1: 0); j < map2->fragments.size; ++j) {
+			const struct fragment *f2 = &map2->fragments.data[j];
 			b[0] = 0;
-			for (k = 0; k < f2->size; ++k) {
-				b[k + 1] = f2->data[k].pos;
+			for (k = 0; k < f2->nicks.size; ++k) {
+				b[k + 1] = f2->nicks.data[k].pos;
 			}
 
-			align(map1->data[i].fragment_name, a, f1->size + 1,
-				map2->data[j].fragment_name, b, f2->size + 1);
+			align(map1->fragments.data[i].name, a, f1->nicks.size + 1,
+				map2->fragments.data[j].name, b, f2->nicks.size + 1);
 		}
 	}
 	free(b);
