@@ -1,12 +1,10 @@
 #include <stdio.h>
-#include <string.h>
-#include <stdlib.h>
-#include <errno.h>
-#include <getopt.h>
-#include <limits.h>
-#include <time.h>
-#include <zlib.h>
+#include <unistd.h>
 #include "nick_map.h"
+#include "ref_index.h"
+
+#define TOLERANCE 0.1
+#define MIN_MATCH 4
 
 static int verbose = 0;
 
@@ -21,75 +19,6 @@ static void print_usage(void)
 			"   -v        show verbose message\n"
 			"\n");
 }
-
-#define FIRST_FRAGMENT 1
-#define LAST_FRAGMENT  2
-
-struct node {
-	size_t chrom;  /* item index in ref */
-	int pos;
-	int size;
-	int flag;
-};
-
-static size_t ref_node_count = 0;
-static struct node * ref_nodes = NULL;
-static struct node **ref_index = NULL;
-
-int sort_by_size(const void *a, const void *b)
-{
-	size_t i, j, k;
-	const struct node * const *node_a = a;
-	const struct node * const *node_b = b;
-	if ((*node_a)->size < (*node_b)->size) return -1;
-	if ((*node_a)->size > (*node_b)->size) return 1;
-	i = (*node_a) - ref_nodes;
-	j = (*node_b) - ref_nodes;
-	for (k = 0; ; ++k) {
-		if (ref_nodes[i + k].size < ref_nodes[j + k].size) return -1;
-		if (ref_nodes[i + k].size > ref_nodes[j + k].size) return 1;
-	}
-	return 0;
-}
-
-static void generate_ref_nodes(const struct nick_map *ref)
-{
-	size_t i, j, k;
-
-	ref_node_count = 0;
-	for (i = 0; i < ref->size; ++i) {
-		ref_node_count += ref->data[i].size;
-	}
-
-	ref_nodes = malloc(sizeof(struct node) * ref_node_count);
-	ref_index = malloc(sizeof(struct node *) * ref_node_count);
-
-	for (i = 0, k = 0; i < ref->size; ++i) {
-		const struct nick_list *list = &ref->data[i];
-		for (j = 0; j < list->size; ++j) {
-			ref_nodes[k].chrom = i;
-			ref_nodes[k].pos = list->data[j].pos;
-			ref_nodes[k].size = list->data[j].pos - (j == 0 ? 0 : list->data[j - 1].pos);
-			ref_nodes[k].flag = (j == 0 ? FIRST_FRAGMENT : 0) | (j + 1 == list->size ? LAST_FRAGMENT : 0);
-			ref_index[k] = &ref_nodes[k];
-			++k;
-		}
-	}
-
-	qsort(ref_index, ref_node_count, sizeof(struct node *), sort_by_size);
-
-	if (verbose > 0) {
-		printf("Total fragment count = %zd\n", ref_node_count);
-		for (i = 0; i < ref_node_count; ++i) {
-			printf("  [%2zd] %s, %d, %d, %d\n", i,
-					ref->data[ref_index[i]->chrom].fragment_name,
-					ref_index[i]->pos, ref_index[i]->size, ref_index[i]->flag);
-		}
-	}
-}
-
-#define TOLERANCE 0.1
-#define MIN_MATCH 4
 
 static void print_header(void)
 {
@@ -187,12 +116,7 @@ int map_main(int argc, char * const argv[])
 	if (nick_map_load(&ref, argv[optind])) {
 		return 1;
 	}
-	{
-		clock_t t0 = clock();
-		generate_ref_nodes(&ref);
-		printf("generating ref_nodes used %ld ms.\n",
-				(clock() - t0) * 1000 / CLOCKS_PER_SEC);
-	}
+	generate_ref_nodes(&ref);
 
 	nick_map_init(&qry);
 	if (nick_map_load(&qry, argv[optind + 1])) {

@@ -5,6 +5,7 @@
 
 extern int nick_main (int argc, char * const argv[]);
 extern int view_main (int argc, char * const argv[]);
+extern int stat_main (int argc, char * const argv[]);
 extern int align_main(int argc, char * const argv[]);
 extern int map_main  (int argc, char * const argv[]);
 
@@ -24,6 +25,7 @@ static const struct command CMD[] = {
 	{ "version", version_main, "Print program version" },
 	{ "nick",    nick_main,    "Generate restriction map from sequence" },
 	{ "view",    view_main,    "Convert restriction map between formats" },
+	{ "stat",    stat_main,    "Stat motifs in restriction map" },
 	{ "align",   align_main,   "Align between two restriction maps" },
 	{ "map",     map_main,     "Map molecules to reference genome" },
 };
