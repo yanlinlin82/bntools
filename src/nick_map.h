@@ -7,11 +7,21 @@
 #define MAX_REC_SEQ_SIZE 32
 #define MAX_CHROM_NAME_SIZE 64
 
-#define STRAND_UNKNOWN 0
-#define STRAND_PLUS    1
-#define STRAND_MINUS   2
-#define STRAND_BOTH    (STRAND_PLUS | STRAND_MINUS)
-#define STRAND_END     4
+enum nick_strand {
+	STRAND_UNKNOWN = 0,
+	STRAND_PLUS    = 1,
+	STRAND_MINUS   = 2,
+	STRAND_BOTH    = (STRAND_PLUS | STRAND_MINUS),
+	STRAND_END     = 4,
+};
+
+enum file_format {
+	FORMAT_UNKNOWN = 0,
+	FORMAT_TXT,  /* simple text, with one molecule/contig in each line */
+	FORMAT_TSV,  /* tab-separated values, with VCF-like comment header  */
+	FORMAT_BNX,  /* .bnx file for molecules, by BioNano inc. */
+	FORMAT_CMAP, /* .cmap file for consensus map, by BioNano inc. */
+};
 
 struct nick {
 	int pos;
@@ -52,9 +62,11 @@ int nick_map_add_site(struct nick_list *p, int pos, int strand);
 
 /* IO functions */
 
+int parse_format_text(const char *s);
+
 int nick_map_load(struct nick_map *map, const char *filename);
 int nick_map_load_fasta(struct nick_map *map, const char *filename,
 		int only_chromosome, int transform_to_number, int verbose);
-int nick_map_save(const struct nick_map *map, const char *filename, int output_cmap);
+int nick_map_save(const struct nick_map *map, const char *filename, int format);
 
 #endif /* __NICK_MAP_H__ */

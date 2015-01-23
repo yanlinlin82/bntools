@@ -8,6 +8,21 @@
 #include "base_map.h"
 #include "version.h"
 
+int parse_format_text(const char *s)
+{
+	if (strcmp(s, "txt") == 0) {
+		return FORMAT_TXT;
+	} else if (strcmp(s, "tsv") == 0) {
+		return FORMAT_TSV;
+	} else if (strcmp(s, "bnx") == 0) {
+		return FORMAT_BNX;
+	} else if (strcmp(s, "cmap") == 0) {
+		return FORMAT_CMAP;
+	} else {
+		return FORMAT_UNKNOWN;
+	}
+}
+
 static inline int string_begins_as(const char *s, const char *prefix)
 {
 	return (memcmp(s, prefix, strlen(prefix)) == 0);
@@ -467,15 +482,6 @@ int nick_map_load(struct nick_map *map, const char *filename)
 	return ret;
 }
 
-static void write_cmap_line(gzFile file, const char *cmap_id, int contig_length,
-		size_t num_sites, size_t site_id, int label_channel, int position,
-		int stddev, int coverage, int occurance)
-{
-	gzprintf(file, "%s\t%d\t%zd\t%zd\t%d\t%d\t%d\t%d\t%d\n",
-			cmap_id, contig_length, num_sites, site_id,
-			label_channel, position, stddev, coverage, occurance);
-}
-
 static void write_command_line(gzFile file)
 {
 	char name[64] = "";
@@ -493,7 +499,21 @@ static void write_command_line(gzFile file)
 	}
 }
 
-static void nick_map_write(gzFile file, const struct nick_map *map)
+static int save_as_txt(gzFile file, const struct nick_map *map)
+{
+	size_t i, j;
+	for (i = 0; i < map->size; ++i) {
+		const struct nick_list *p = &map->data[i];
+		gzprintf(file, "%s %d", p->fragment_name, p->size);
+		for (j = 0; j < p->size; ++j) {
+			gzprintf(file, " %d", p->data[j].pos - (j == 0 ? 0 : p->data[j - 1].pos));
+		}
+		gzprintf(file, "\n");
+	}
+	return 0;
+}
+
+static int save_as_tsv(gzFile file, const struct nick_map *map)
 {
 	static const char * const STRAND[] = { "?", "+", "-", "+/-", "*" };
 	size_t i, j;
@@ -518,9 +538,47 @@ static void nick_map_write(gzFile file, const struct nick_map *map)
 		gzprintf(file, "%s\t%d\t*\t%d\n", p->fragment_name, p->fragment_size,
 				p->fragment_size - (p->size == 0 ? 0 : p->data[p->size - 1].pos));
 	}
+	return 0;
 }
 
-static void nick_map_write_cmap(gzFile file, const struct nick_map *map)
+static int save_as_bnx(gzFile file, const struct nick_map *map)
+{
+	size_t i, j;
+
+	gzprintf(file, "# BNX File Version: 0.1\n");
+	gzprintf(file, "# Label Channels: 1\n");
+	if (map->enzyme[0] && map->rec_seq[0]) {
+		gzprintf(file, "# Nickase Recognition Site 1: %s/%s\n", map->enzyme, map->rec_seq);
+	} else {
+		gzprintf(file, "# Nickase Recognition Site 1: unknown\n");
+	}
+	gzprintf(file, "# Number of Nanomaps: %zd\n", map->size);
+	gzprintf(file, "#0h\tLabel Channel\tMapID\tLength\n");
+	gzprintf(file, "#0f\tint\tint\tfloat\n");
+	gzprintf(file, "#1h\tLabel Channel\tLabelPositions[N]\n");
+	gzprintf(file, "#1f\tint\tfloat\n");
+
+	for (i = 0; i < map->size; ++i) {
+		const struct nick_list *p = &map->data[i];
+		gzprintf(file, "0\t%s\t%zd\n1", p->fragment_name, p->fragment_size);
+		for (j = 0; j < p->size; ++j) {
+			gzprintf(file, "\t%d", p->data[j].pos);
+		}
+		gzprintf(file, "\n");
+	}
+	return 0;
+}
+
+static void write_cmap_line(gzFile file, const char *cmap_id, int contig_length,
+		size_t num_sites, size_t site_id, int label_channel, int position,
+		int stddev, int coverage, int occurance)
+{
+	gzprintf(file, "%s\t%d\t%zd\t%zd\t%d\t%d\t%d\t%d\t%d\n",
+			cmap_id, contig_length, num_sites, site_id,
+			label_channel, position, stddev, coverage, occurance);
+}
+
+static int save_as_cmap(gzFile file, const struct nick_map *map)
 {
 	size_t i, j;
 
@@ -545,11 +603,13 @@ static void nick_map_write_cmap(gzFile file, const struct nick_map *map)
 		write_cmap_line(file, p->fragment_name, p->fragment_size,
 				p->size, p->size + 1, 0, p->fragment_size, 0, 1, 1);
 	}
+	return 0;
 }
 
-int nick_map_save(const struct nick_map *map, const char *filename, int output_cmap)
+int nick_map_save(const struct nick_map *map, const char *filename, int format)
 {
 	gzFile file;
+	int ret;
 
 	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdout") == 0) {
 		file = gzdopen(1, "wT"); /* stdout, without compression */
@@ -570,11 +630,17 @@ int nick_map_save(const struct nick_map *map, const char *filename, int output_c
 		return 1;
 	}
 
-	if (output_cmap) {
-		nick_map_write_cmap(file, map);
-	} else {
-		nick_map_write(file, map);
+	switch (format) {
+	case FORMAT_TXT: ret = save_as_txt(file, map); break;
+	case FORMAT_TSV: ret = save_as_tsv(file, map); break;
+	case FORMAT_BNX: ret = save_as_bnx(file, map); break;
+	case FORMAT_CMAP: ret = save_as_cmap(file, map); break;
+	default: assert(0); ret = -EINVAL; break;
 	}
 	gzclose(file);
-	return 0;
+
+	if (ret) {
+		unlink(filename);
+	}
+	return ret;
 }

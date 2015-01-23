@@ -12,7 +12,7 @@
 static int verbose = 0;
 
 static char output_file[PATH_MAX] = DEF_OUTPUT;
-static int output_cmap = 0;
+static int format = FORMAT_TSV;
 
 static void print_usage(void)
 {
@@ -20,9 +20,9 @@ static void print_usage(void)
 			"Usage: bntools view [options] <input> [...]\n"
 			"\n"
 			"Options:\n"
-			"   <input> [...]   input map file(s), in tsv/cmap/bnx format\n"
+			"   <input> [...]   input map file(s), in tsv/cmap/bnx/txt format\n"
 			"   -o FILE         output file ["DEF_OUTPUT"]\n"
-			"   -f {tsv|cmap}   output format ["DEF_FORMAT"]\n"
+			"   -f STR          output format, tsv/cmap/bnx/txt ["DEF_FORMAT"]\n"
 			"   -v              show verbose message\n"
 			"\n");
 }
@@ -36,11 +36,8 @@ static int check_options(int argc, char * const argv[])
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
 			break;
 		case 'f':
-			if (strcmp(optarg, "tsv") == 0) {
-				output_cmap = 0;
-			} else if (strcmp(optarg, "cmap") == 0) {
-				output_cmap = 1;
-			} else {
+			format = parse_format_text(optarg);
+			if (format == FORMAT_UNKNOWN) {
 				fprintf(stderr, "Error: Unknown output format '%s'!\n", optarg);
 				return 1;
 			}
@@ -77,7 +74,7 @@ int view_main(int argc, char * const argv[])
 		}
 	}
 
-	nick_map_save(&map, output_file, output_cmap);
+	nick_map_save(&map, output_file, format);
 	nick_map_free(&map);
 	return 0;
 }
