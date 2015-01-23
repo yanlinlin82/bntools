@@ -22,12 +22,12 @@ struct command {
 };
 
 static const struct command CMD[] = {
-	{ "version", version_main, "Print program version" },
-	{ "nick",    nick_main,    "Generate restriction map from sequence" },
-	{ "view",    view_main,    "Convert restriction map between formats" },
-	{ "stat",    stat_main,    "Stat motifs in restriction map" },
-	{ "align",   align_main,   "Align between two restriction maps" },
-	{ "map",     map_main,     "Map molecules to reference genome" },
+	{ "version", version_main, "print program version" },
+	{ "nick",    nick_main,    "generate restriction map from sequence" },
+	{ "view",    view_main,    "convert restriction map between formats" },
+	{ "stat",    stat_main,    "stat motifs in restriction map" },
+	{ "align",   align_main,   "align between two restriction maps" },
+	{ "map",     map_main,     "map molecules to reference genome" },
 };
 
 static void print_usage(void)
@@ -39,15 +39,10 @@ static void print_usage(void)
 	fprintf(stderr, "\n"
 			"Program: bntools (Tools for BioNano data analysis)\n"
 			"Version: "VERSION"\n"
-			"Author : Linlin Yan (yanll<at>mail.cbi.pku.edu.cn)\n"
-			"Copyright: 2014-2015, Centre for Bioinformatics, Peking University, China\n"
-			"Website: http://github.com/yanlinlin82/bntools/\n"
-			"         http://www.cbi.pku.edu.cn/\n"
-			"         http://www.bionanogenomics.com/\n"
 			"\n"
 			"Usage: bntools <command> [options]\n"
 			"\n"
-			"Command:\n");
+			"Commands:\n");
 
 	for (i = 0; i < sizeof(CMD) / sizeof(CMD[0]); ++i) {
 		size_t len = strlen(CMD[i].name);
