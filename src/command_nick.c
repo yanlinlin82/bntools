@@ -20,8 +20,7 @@ static char enzyme[MAX_ENZYME_NAME_SIZE] = DEF_ENZ_NAME;
 static char rec_seq[MAX_REC_SEQ_SIZE] = DEF_REC_SEQ;
 static char output_file[PATH_MAX] = DEF_OUTPUT;
 static int format = FORMAT_TSV;
-static int transform_to_number = 0;
-static int only_chromosome = 0;
+static int chrom_only = 0;
 
 static void print_usage(void)
 {
@@ -35,7 +34,6 @@ static void print_usage(void)
 			"   -e STR         restriction enzyme name ["DEF_ENZ_NAME"]\n"
 			"   -r STR         recognition sequence ["DEF_REC_SEQ"]\n"
 			"   -S             select only chr1-22, chrX and chrY to nick\n"
-			"   -n             transform chromosome/contig names into numbers\n"
 			"   -v             show verbose messages\n"
 			"\n");
 }
@@ -43,7 +41,7 @@ static void print_usage(void)
 static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "o:f:e:r:Snv")) != -1) {
+	while ((c = getopt(argc, argv, "o:f:e:r:Sv")) != -1) {
 		switch (c) {
 		case 'o':
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
@@ -62,10 +60,7 @@ static int check_options(int argc, char * const argv[])
 			snprintf(rec_seq, sizeof(rec_seq), "%s", optarg);
 			break;
 		case 'S':
-			only_chromosome = 1;
-			break;
-		case 'n':
-			transform_to_number = 1;
+			chrom_only = 1;
 			break;
 		case 'v':
 			++verbose;
@@ -97,8 +92,7 @@ int nick_main(int argc, char * const argv[])
 	}
 
 	for (i = optind; i < argc; ++i) {
-		if ((ret = nick_map_load_fasta(&map, argv[i],
-				only_chromosome, transform_to_number, verbose)) != 0) {
+		if ((ret = nick_map_load_fasta(&map, argv[i], chrom_only, verbose)) != 0) {
 			goto final;
 		}
 	}

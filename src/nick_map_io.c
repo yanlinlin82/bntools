@@ -87,8 +87,7 @@ static int process_line(struct nick_map *map, struct fragment *f,
 	return base_count;
 }
 
-int nick_map_load_fasta(struct nick_map *map, const char *filename,
-		int only_chromosome, int transform_to_number, int verbose)
+int nick_map_load_fasta(struct nick_map *map, const char *filename, int chrom_only, int verbose)
 {
 	gzFile file;
 	struct fragment *f = NULL;
@@ -124,7 +123,7 @@ int nick_map_load_fasta(struct nick_map *map, const char *filename,
 					fprintf(stderr, "%d bp\n", base_count);
 				}
 			}
-			if (only_chromosome) {
+			if (chrom_only) {
 				int skip = 1;
 				const char *p = line + 1;
 				if (memcmp(p, "chr", 3) == 0) {
@@ -143,10 +142,7 @@ int nick_map_load_fasta(struct nick_map *map, const char *filename,
 					continue;
 				}
 			}
-			if (transform_to_number) {
-				static int number = 0;
-				snprintf(name, sizeof(name), "%d", ++number);
-			} else {
+			{
 				char *p = line + 1;
 				while (*p && !isspace(*p)) ++p;
 				*p = '\0';
