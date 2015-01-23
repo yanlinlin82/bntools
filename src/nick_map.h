@@ -1,6 +1,7 @@
 #ifndef __NICK_MAP_H__
 #define __NICK_MAP_H__
 
+#include <stdint.h>
 #include <string.h>
 
 #define MAX_ENZYME_NAME_SIZE 16
@@ -15,12 +16,12 @@ enum nick_strand {
 	STRAND_END     = 4,
 };
 
-enum file_format {
+enum file_format {  /* of restriction map */
 	FORMAT_UNKNOWN = 0,
-	FORMAT_TXT,  /* simple text, with one molecule/contig in each line */
-	FORMAT_TSV,  /* tab-separated values, with VCF-like comment header  */
-	FORMAT_BNX,  /* .bnx file for molecules, by BioNano inc. */
-	FORMAT_CMAP, /* .cmap file for consensus map, by BioNano inc. */
+	FORMAT_TXT,   /* simple text, with one molecule/contig in each line */
+	FORMAT_TSV,   /* tab-separated values, with VCF-like comment header  */
+	FORMAT_BNX,   /* .bnx file for molecules, by BioNano inc. */
+	FORMAT_CMAP,  /* .cmap file for consensus map, by BioNano inc. */
 };
 
 struct nick {
@@ -28,18 +29,18 @@ struct nick {
 	int strand;
 };
 
-struct nick_list {
+struct fragment {  /* molecule, contig or chromosome */
+	char *fragment_name;
+	int fragment_size;  /* in bp */
 	size_t capacity;
 	size_t size;
 	struct nick *data;
-	char *fragment_name;
-	int fragment_size;
 };
 
 struct nick_map {
 	size_t capacity;
 	size_t size;
-	struct nick_list *data;
+	struct fragment *data;
 
 	char enzyme[MAX_ENZYME_NAME_SIZE];
 	char rec_seq[MAX_REC_SEQ_SIZE];
@@ -57,8 +58,8 @@ void nick_map_free(struct nick_map *map);
 
 int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *rec_seq);
 
-struct nick_list *nick_map_add_fragment(struct nick_map *map, const char *name);
-int nick_map_add_site(struct nick_list *p, int pos, int strand);
+struct fragment *nick_map_add_fragment(struct nick_map *map, const char *name);
+int nick_map_add_site(struct fragment *p, int pos, int strand);
 
 /* IO functions */
 

@@ -217,21 +217,21 @@ static int align_between_maps(const struct nick_map *map1, const struct nick_map
 
 	fprintf(stdout, "#>0\tAlignmentID\tMol0ID\tMol1ID\n");
 	for (i = 0; i < map1->size; ++i) {
-		const struct nick_list *list1 = &map1->data[i];
+		const struct fragment *f1 = &map1->data[i];
 		a[0] = 0;
-		for (k = 0; k < list1->size; ++k) {
-			a[k + 1] = list1->data[k].pos;
+		for (k = 0; k < f1->size; ++k) {
+			a[k + 1] = f1->data[k].pos;
 		}
 
 		for (j = (map1 == map2 ? i + 1: 0); j < map2->size; ++j) {
-			const struct nick_list *list2 = &map2->data[j];
+			const struct fragment *f2 = &map2->data[j];
 			b[0] = 0;
-			for (k = 0; k < list2->size; ++k) {
-				b[k + 1] = list2->data[k].pos;
+			for (k = 0; k < f2->size; ++k) {
+				b[k + 1] = f2->data[k].pos;
 			}
 
-			align(map1->data[i].fragment_name, a, list1->size + 1,
-				map2->data[j].fragment_name, b, list2->size + 1);
+			align(map1->data[i].fragment_name, a, f1->size + 1,
+				map2->data[j].fragment_name, b, f2->size + 1);
 		}
 	}
 	free(b);

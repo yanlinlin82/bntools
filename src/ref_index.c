@@ -35,12 +35,12 @@ void generate_ref_nodes(const struct nick_map *ref)
 	ref_index = malloc(sizeof(struct node *) * ref_node_count);
 
 	for (i = 0, k = 0; i < ref->size; ++i) {
-		const struct nick_list *list = &ref->data[i];
-		for (j = 0; j < list->size; ++j) {
+		const struct fragment *f = &ref->data[i];
+		for (j = 0; j < f->size; ++j) {
 			ref_nodes[k].chrom = i;
-			ref_nodes[k].pos = list->data[j].pos;
-			ref_nodes[k].size = list->data[j].pos - (j == 0 ? 0 : list->data[j - 1].pos);
-			ref_nodes[k].flag = (j == 0 ? FIRST_FRAGMENT : 0) | (j + 1 == list->size ? LAST_FRAGMENT : 0);
+			ref_nodes[k].pos = f->data[j].pos;
+			ref_nodes[k].size = f->data[j].pos - (j == 0 ? 0 : f->data[j - 1].pos);
+			ref_nodes[k].flag = (j == 0 ? FIRST_FRAGMENT : 0) | (j + 1 == f->size ? LAST_FRAGMENT : 0);
 			ref_nodes[k].uniq_count = 0;
 			ref_index[k] = &ref_nodes[k];
 			++k;

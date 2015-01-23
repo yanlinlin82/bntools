@@ -33,7 +33,7 @@ static void print_item(const char *name, const char *chrom, int pos, int direct,
 			size, labels, rstart, rend, qstart, qend);
 }
 
-static void map(struct nick_map *ref, struct nick_list *qry_item)
+static void map(struct nick_map *ref, struct fragment *qry_item)
 {
 	size_t i, j, index;
 	int *intervals;

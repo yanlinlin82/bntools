@@ -26,12 +26,12 @@ static int nick_map_reserve(struct nick_map *map, size_t size)
 {
 	if (map->capacity < size) {
 		size_t capacity = new_capacity(map->capacity, size);
-		struct nick_list *p = malloc(sizeof(struct nick_list) * capacity);
+		struct fragment *p = malloc(sizeof(struct fragment) * capacity);
 		if (!p) {
 			return -ENOMEM;
 		}
 		if (map->size > 0) {
-			memcpy(p, map->data, sizeof(struct nick_list) * map->size);
+			memcpy(p, map->data, sizeof(struct fragment) * map->size);
 		}
 		free(map->data);
 		map->data = p;
@@ -40,20 +40,20 @@ static int nick_map_reserve(struct nick_map *map, size_t size)
 	return 0;
 }
 
-static int nick_list_reserve(struct nick_list *list, size_t size)
+static int fragment_reserve(struct fragment *f, size_t size)
 {
-	if (list->capacity < size) {
-		size_t capacity = new_capacity(list->capacity, size);
+	if (f->capacity < size) {
+		size_t capacity = new_capacity(f->capacity, size);
 		struct nick *p = malloc(sizeof(struct nick) * capacity);
 		if (!p) {
 			return -ENOMEM;
 		}
-		if (list->size > 0) {
-			memcpy(p, list->data, sizeof(struct nick) * list->size);
+		if (f->size > 0) {
+			memcpy(p, f->data, sizeof(struct nick) * f->size);
 		}
-		free(list->data);
-		list->data = p;
-		list->capacity = capacity;
+		free(f->data);
+		f->data = p;
+		f->capacity = capacity;
 	}
 	return 0;
 }
@@ -136,9 +136,9 @@ int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *re
 	return 0;
 }
 
-struct nick_list *nick_map_add_fragment(struct nick_map *map, const char *name)
+struct fragment *nick_map_add_fragment(struct nick_map *map, const char *name)
 {
-	struct nick_list *p;
+	struct fragment *p;
 	size_t i;
 
 	for (i = 0; i < map->size; ++i) {
@@ -151,7 +151,7 @@ struct nick_list *nick_map_add_fragment(struct nick_map *map, const char *name)
 	}
 
 	p = &map->data[i];
-	memset(p, 0, sizeof(struct nick_list));
+	memset(p, 0, sizeof(struct fragment));
 	p->fragment_name = strdup(name);
 	if (!p->fragment_name) {
 		return NULL;
@@ -160,7 +160,7 @@ struct nick_list *nick_map_add_fragment(struct nick_map *map, const char *name)
 	return p;
 }
 
-int nick_map_add_site(struct nick_list *p, int pos, int strand)
+int nick_map_add_site(struct fragment *p, int pos, int strand)
 {
 	size_t i, j;
 
@@ -172,7 +172,7 @@ int nick_map_add_site(struct nick_list *p, int pos, int strand)
 			break;
 		}
 	}
-	if (nick_list_reserve(p, p->size + 1)) {
+	if (fragment_reserve(p, p->size + 1)) {
 		return -ENOMEM;
 	}
 	for (j = p->size; j > i; --j) {
