@@ -43,4 +43,4 @@ Others
 
 2. To build with debug info, try:
 
-     make DEBUG=1
+        make DEBUG=1
