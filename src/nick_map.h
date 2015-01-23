@@ -40,6 +40,8 @@ struct nick_map {
 	int palindrome;
 };
 
+/* basic functions */
+
 void nick_map_init(struct nick_map *map);
 void nick_map_free(struct nick_map *map);
 
@@ -47,6 +49,8 @@ int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *re
 
 struct nick_list *nick_map_add_fragment(struct nick_map *map, const char *name);
 int nick_map_add_site(struct nick_list *p, int pos, int strand);
+
+/* IO functions */
 
 int nick_map_load(struct nick_map *map, const char *filename);
 int nick_map_load_fasta(struct nick_map *map, const char *filename,
