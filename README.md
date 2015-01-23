@@ -25,15 +25,15 @@ Quick start
 1. Nick reference genome sequences (in FASTA format) to generate nick site map
    (in Tab-Separated-Values format).
 
-       bntools nick hg38.fa -o hg38.tsv.gz
+        bntools nick hg38.fa -o hg38.tsv.gz
 
 2. Map molecules onto the reference map.
 
-       bntools map hg38.tsv.gz input.bnx.gz
+        bntools map hg38.tsv.gz input.bnx.gz
 
 3. Convert maps between formats (txt/tsv/bnx/cmap).
 
-       bntools view input.bnx.gz -f cmap
+        bntools view input.bnx.gz -f cmap
 
 Others
 ------
@@ -43,4 +43,4 @@ Others
 
 2. To build with debug info, try:
 
-    make DEBUG=1
+     make DEBUG=1
