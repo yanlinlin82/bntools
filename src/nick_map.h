@@ -63,7 +63,8 @@ int nick_map_add_site(struct fragment *f, int pos, int strand);
 int parse_format_text(const char *s);
 
 int nick_map_load(struct nick_map *map, const char *filename);
-int nick_map_load_fasta(struct nick_map *map, const char *filename, int chrom_only, int verbose);
 int nick_map_save(const struct nick_map *map, const char *filename, int format);
+
+int nick_map_load_fasta(struct nick_map *map, const char *filename, int chrom_only, int verbose);
 
 #endif /* __NICK_MAP_H__ */

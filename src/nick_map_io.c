@@ -23,6 +23,8 @@ int parse_format_text(const char *s)
 	}
 }
 
+static inline int to_integer(double x) { return (int)(x + .5); }
+
 static inline int string_begins_as(const char *s, const char *prefix)
 {
 	return (memcmp(s, prefix, strlen(prefix)) == 0);
@@ -35,149 +37,6 @@ static inline int skip_to_next_line(gzFile file, char *buf, size_t bufsize)
 	}
 	return 0;
 }
-
-static int seq_match(const char *ref, const char *query, size_t len, int strand)
-{
-	size_t i;
-	assert(strand == STRAND_PLUS || strand == STRAND_MINUS);
-	for (i = 0; i < len; ++i) {
-		char r = ref[i];
-		char q = (strand == STRAND_PLUS ? query[i] : base_to_comp(query[len - i - 1]));
-		if ((r & q) != r) {
-			return 0;
-		}
-	}
-	return 1;
-}
-
-struct buffer {
-	char data[MAX_REC_SEQ_SIZE * 2];
-	size_t pos;
-};
-
-static int process_line(struct nick_map *map, struct fragment *f,
-		const char *line, int base_count, struct buffer *buf)
-{
-	const char *p;
-	int strand;
-	int matched;
-	for (p = line; *p; ++p) {
-		if (isspace(*p)) {
-			continue;
-		}
-		if (buf->pos >= sizeof(buf->data)) {
-			memcpy(buf->data, buf->data + sizeof(buf->data) - map->rec_seq_size + 1, map->rec_seq_size - 1);
-			buf->pos = map->rec_seq_size - 1;
-		}
-		++base_count;
-		buf->data[buf->pos++] = char_to_base(*p);
-		if (buf->pos < map->rec_seq_size) {
-			continue;
-		}
-		for (strand = STRAND_PLUS, matched = 0; strand <= STRAND_MINUS; ++strand) {
-			if (matched || seq_match(buf->data + buf->pos - map->rec_seq_size, map->rec_bases, map->rec_seq_size, strand)) {
-				int site_pos = base_count - (strand == STRAND_MINUS ? map->nick_offset : (map->rec_seq_size - map->nick_offset));
-				if (nick_map_add_site(f, site_pos, strand)) {
-					return -ENOMEM;
-				}
-				matched = map->palindrome;
-			}
-		}
-	}
-	return base_count;
-}
-
-int nick_map_load_fasta(struct nick_map *map, const char *filename, int chrom_only, int verbose)
-{
-	gzFile file;
-	struct fragment *f = NULL;
-	char name[MAX_CHROM_NAME_SIZE] = "";
-	struct buffer buf = { };
-	int c, ret = 0, base_count = 0;
-
-	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
-		file = gzdopen(0, "r"); /* stdin */
-	} else {
-		file = gzopen(filename, "r");
-	}
-	if (!file) {
-		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
-		return 1;
-	}
-
-	c = gzgetc(file);
-	if (c != '>') {
-		fprintf(stderr, "Error: File '%s' is not in FASTA format\n", filename);
-		ret = -EINVAL;
-		goto out;
-	}
-	gzungetc(c, file);
-
-	while (!gzeof(file)) {
-		char line[256];
-		if (!gzgets(file, line, sizeof(line))) break;
-		if (line[0] == '>') {
-			if (f) {
-				f->size = base_count;
-				if (verbose > 0) {
-					fprintf(stderr, "%d bp\n", base_count);
-				}
-			}
-			if (chrom_only) {
-				int skip = 1;
-				const char *p = line + 1;
-				if (memcmp(p, "chr", 3) == 0) {
-					p += 3;
-				}
-				if (p[0] >= '1' && p[0] <= '9' && isspace(p[1])) {
-					skip = 0;
-				} else if ((p[0] == '1' || p[0] == '2') &&
-						(p[1] >= '0' && p[1] <= '9') && isspace(p[2])) {
-					skip = 0;
-				} else if ((p[0] == 'X' || p[1] == 'Y') && isspace(p[1])) {
-					skip = 0;
-				}
-				if (skip) {
-					f = NULL;
-					continue;
-				}
-			}
-			{
-				char *p = line + 1;
-				while (*p && !isspace(*p)) ++p;
-				*p = '\0';
-				snprintf(name, sizeof(name), line + 1);
-			}
-			if (verbose > 0) {
-				fprintf(stderr, "Loading fragment '%s' ... ", name);
-			}
-			base_count = 0;
-			f = nick_map_add_fragment(map, name);
-			if (!f) {
-				ret = -ENOMEM;
-				goto out;
-			}
-		} else if (f) {
-			int n = process_line(map, f, line, base_count, &buf);
-			if (n < 0) {
-				ret = n;
-				goto out;
-			}
-			base_count = n;
-		}
-	}
-	if (f) {
-		f->size = base_count;
-		if (verbose > 0) {
-			fprintf(stderr, "%d bp\n", base_count);
-		}
-	}
-out:
-	gzclose(file);
-	return ret;
-}
-
-static inline int to_integer(double x) { return (int)(x + .5); }
 
 static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 {
@@ -641,5 +500,146 @@ int nick_map_save(const struct nick_map *map, const char *filename, int format)
 	if (ret) {
 		unlink(filename);
 	}
+	return ret;
+}
+
+static int seq_match(const char *ref, const char *query, size_t len, int strand)
+{
+	size_t i;
+	assert(strand == STRAND_PLUS || strand == STRAND_MINUS);
+	for (i = 0; i < len; ++i) {
+		char r = ref[i];
+		char q = (strand == STRAND_PLUS ? query[i] : base_to_comp(query[len - i - 1]));
+		if ((r & q) != r) {
+			return 0;
+		}
+	}
+	return 1;
+}
+
+struct buffer {
+	char data[MAX_REC_SEQ_SIZE * 2];
+	size_t pos;
+};
+
+static int process_line(struct nick_map *map, struct fragment *f,
+		const char *line, int base_count, struct buffer *buf)
+{
+	const char *p;
+	int strand;
+	int matched;
+	for (p = line; *p; ++p) {
+		if (isspace(*p)) {
+			continue;
+		}
+		if (buf->pos >= sizeof(buf->data)) {
+			memcpy(buf->data, buf->data + sizeof(buf->data) - map->rec_seq_size + 1, map->rec_seq_size - 1);
+			buf->pos = map->rec_seq_size - 1;
+		}
+		++base_count;
+		buf->data[buf->pos++] = char_to_base(*p);
+		if (buf->pos < map->rec_seq_size) {
+			continue;
+		}
+		for (strand = STRAND_PLUS, matched = 0; strand <= STRAND_MINUS; ++strand) {
+			if (matched || seq_match(buf->data + buf->pos - map->rec_seq_size, map->rec_bases, map->rec_seq_size, strand)) {
+				int site_pos = base_count - (strand == STRAND_MINUS ? map->nick_offset : (map->rec_seq_size - map->nick_offset));
+				if (nick_map_add_site(f, site_pos, strand)) {
+					return -ENOMEM;
+				}
+				matched = map->palindrome;
+			}
+		}
+	}
+	return base_count;
+}
+
+int nick_map_load_fasta(struct nick_map *map, const char *filename, int chrom_only, int verbose)
+{
+	gzFile file;
+	struct fragment *f = NULL;
+	char name[MAX_CHROM_NAME_SIZE] = "";
+	struct buffer buf = { };
+	int c, ret = 0, base_count = 0;
+
+	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
+		file = gzdopen(0, "r"); /* stdin */
+	} else {
+		file = gzopen(filename, "r");
+	}
+	if (!file) {
+		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
+		return 1;
+	}
+
+	c = gzgetc(file);
+	if (c != '>') {
+		fprintf(stderr, "Error: File '%s' is not in FASTA format\n", filename);
+		ret = -EINVAL;
+		goto out;
+	}
+	gzungetc(c, file);
+
+	while (!gzeof(file)) {
+		char line[256];
+		if (!gzgets(file, line, sizeof(line))) break;
+		if (line[0] == '>') {
+			if (f) {
+				f->size = base_count;
+				if (verbose > 0) {
+					fprintf(stderr, "%d bp\n", base_count);
+				}
+			}
+			if (chrom_only) {
+				int skip = 1;
+				const char *p = line + 1;
+				if (memcmp(p, "chr", 3) == 0) {
+					p += 3;
+				}
+				if (p[0] >= '1' && p[0] <= '9' && isspace(p[1])) {
+					skip = 0;
+				} else if ((p[0] == '1' || p[0] == '2') &&
+						(p[1] >= '0' && p[1] <= '9') && isspace(p[2])) {
+					skip = 0;
+				} else if ((p[0] == 'X' || p[1] == 'Y') && isspace(p[1])) {
+					skip = 0;
+				}
+				if (skip) {
+					f = NULL;
+					continue;
+				}
+			}
+			{
+				char *p = line + 1;
+				while (*p && !isspace(*p)) ++p;
+				*p = '\0';
+				snprintf(name, sizeof(name), line + 1);
+			}
+			if (verbose > 0) {
+				fprintf(stderr, "Loading fragment '%s' ... ", name);
+			}
+			base_count = 0;
+			f = nick_map_add_fragment(map, name);
+			if (!f) {
+				ret = -ENOMEM;
+				goto out;
+			}
+		} else if (f) {
+			int n = process_line(map, f, line, base_count, &buf);
+			if (n < 0) {
+				ret = n;
+				goto out;
+			}
+			base_count = n;
+		}
+	}
+	if (f) {
+		f->size = base_count;
+		if (verbose > 0) {
+			fprintf(stderr, "%d bp\n", base_count);
+		}
+	}
+out:
+	gzclose(file);
 	return ret;
 }
