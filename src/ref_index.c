@@ -29,7 +29,7 @@ void generate_ref_nodes(const struct nick_map *ref)
 
 	ref_node_count = 0;
 	for (i = 0; i < ref->fragments.size; ++i) {
-		ref_node_count += ref->fragments.data[i].nicks.size;
+		ref_node_count += ref->fragments.data[i].nicks.size - 1;
 	}
 
 	ref_nodes = malloc(sizeof(struct node) * ref_node_count);
