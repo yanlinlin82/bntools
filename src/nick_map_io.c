@@ -38,111 +38,69 @@ static inline int skip_to_next_line(gzFile file, char *buf, size_t bufsize)
 	return 0;
 }
 
-static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
+static int load_txt(gzFile file, struct nick_map *map)
 {
-	char buf[256];
-	char molecule_id[64] = "";
-	double length = 0;
-	int molecule_length;
+	/* format as: id, #intervals, size[1], ..., size[#intervals] */
 	struct fragment *f = NULL;
-	while (!gzeof(file)) {
-		++lineNo;
-		if (!gzgets(file, buf, sizeof(buf))) break;
-		if (buf[0] == '#') continue;
-		if (memcmp(buf, "0\t", 2) == 0) { /* molecule info */
-			if (sscanf(buf + 2, "%s%lf", molecule_id, &length) != 2) {
-				fprintf(stderr, "Error: Invalid format on line %lld\n", lineNo);
-				return 1;
-			}
-			molecule_length = to_integer(length);
-			f = nick_map_add_fragment(map, molecule_id);
-			f->size = molecule_length;
-			if (skip_to_next_line(file, buf, sizeof(buf))) break;
-		} else if (memcmp(buf, "1\t", 2) == 0) { /* label positions */
-			char *p = buf + 2;
-			for (;;) {
-				char *q = p;
-				double value;
-				while (*q && *q != '\t' && *q != '\n') ++q;
-				if (*q == '\0') {
-					size_t size = q - p;
-					memcpy(buf, p, size);
-					if (!gzgets(file, buf + size, sizeof(buf) - size)) break;
-					p = buf;
-					continue;
-				}
-				if (sscanf(p, "%lf", &value) != 1) {
-					fprintf(stderr, "Error: Failed in reading float value on line %lld\n", lineNo);
-					return 1;
-				}
-				nick_map_add_site(f, to_integer(value), 0);
-				if (*q == '\t') {
-					p = q + 1;
-				} else {
-					assert(*q == '\n');
-					break;
-				}
-			}
-		} else {
-			if (skip_to_next_line(file, buf, sizeof(buf))) break;
-		}
-	}
-	return 0;
-}
-
-static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
-{
+	char name[32] = "";
+	double sum = 0;
+	double value;
+	int count = 0, i = 0, err, c;
 	char buf[256];
-	struct fragment *f = NULL;
-	char lastMapId[32] = "";
+	size_t pos = 0;
 
-	while (!gzeof(file)) {
-		++lineNo;
-		if (!gzgets(file, buf, sizeof(buf))) break;
-		if (buf[0] == '#') {
-			if (string_begins_as(buf, "# Nickase Recognition Site 1:")) {
-				char *p, *q, *e;
-				p = strchr(buf, ':');
-				assert(p != NULL);
-				++p;
-				while (*p && isblank(*p)) ++p;
-				q = strchr(p, '/');
-				if (q != NULL) {
-					*q++ = '\0';
-					e = strchr(q, '\n');
-					if (e) {
-						*e = '\0';
-					}
-					if (nick_map_set_enzyme(map, p, q)) {
-						return 1;
-					}
-				}
-			}
-			continue;
-		} else {
-			char mapId[32];
-			int ctgLen;
-			int numSites;
-			int siteId;
-			int labelChannel;
-			int position;
-			if (sscanf(buf, "%s%d%d%d%d%d", mapId, &ctgLen, &numSites, &siteId, &labelChannel, &position) != 6) {
-				fprintf(stderr, "Error: Failed to parse data on line %lld\n", lineNo);
+	while ((c = gzgetc(file)) != EOF) {
+		if (!isspace(c)) {
+			if (pos >= sizeof(buf)) {
+				fprintf(stderr, "Error: Unexpected long word!\n");
 				return -EINVAL;
 			}
-
-			if (strcmp(lastMapId, mapId) != 0) {
-				f = nick_map_add_fragment(map, mapId);
-			}
-			assert(f != NULL);
-
-			if (labelChannel == 1) {
-				nick_map_add_site(f, position, 0);
+			buf[pos++] = (char)c;
+		} else if (pos > 0) {
+			buf[pos] = '\0';
+			pos = 0;
+			if (!name[0]) {
+				snprintf(name, sizeof(name), "%s", buf);
+				count = 0;
+				i = 0;
+				f = nick_map_add_fragment(map, name);
+				if (!f) {
+					return -ENOMEM;
+				}
+			} else if (count == 0) {
+				count = atoi(buf);
+				i = 0;
+				if (count <= 0) {
+					name[0] = '\0';
+					count = 0;
+				}
 			} else {
-				assert(labelChannel == 0);
-				f->size = position;
+				assert(f != NULL);
+				value = atof(buf);
+				sum += value;
+				++i;
+				if (i < count) {
+					if ((err = nick_map_add_site(f,
+							to_integer(sum), STRAND_UNKNOWN)) != 0) {
+						return err;
+					}
+				} else {
+					if ((err = nick_map_add_site(f,
+							to_integer(sum), STRAND_END)) != 0) {
+						return err;
+					}
+					f->size = to_integer(sum);
+					sum = 0;
+					name[0] = '\0';
+					count = 0;
+					i = 0;
+				}
 			}
 		}
+	}
+	if (name[0] || i < count) {
+		fprintf(stderr, "Error: Unexpected EOF!\n");
+		return -EINVAL;
 	}
 	return 0;
 }
@@ -207,9 +165,8 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 			}
 			assert(f != NULL);
 
-			if (strand != STRAND_END) {
-				nick_map_add_site(f, pos, strand);
-			} else {
+			nick_map_add_site(f, pos, strand);
+			if (strand == STRAND_END) {
 				f->size = pos;
 			}
 		}
@@ -217,64 +174,112 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 	return 0;
 }
 
-static int load_simple(gzFile file, struct nick_map *map)
+static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 {
-	struct fragment *f = NULL;
-	char name[32] = "";
-	double sum = 0;
-	double value;
-	int count = 0, i = 0, err, c;
 	char buf[256];
-	size_t pos = 0;
-
-	while ((c = gzgetc(file)) != EOF) {
-		if (!isspace(c)) {
-			if (pos >= sizeof(buf)) {
-				fprintf(stderr, "Error: Unexpected long word!\n");
-				return -EINVAL;
+	char molecule_id[64] = "";
+	double length = 0;
+	int molecule_length;
+	struct fragment *f = NULL;
+	while (!gzeof(file)) {
+		++lineNo;
+		if (!gzgets(file, buf, sizeof(buf))) break;
+		if (buf[0] == '#') continue;
+		if (memcmp(buf, "0\t", 2) == 0) { /* molecule info */
+			if (sscanf(buf + 2, "%s%lf", molecule_id, &length) != 2) {
+				fprintf(stderr, "Error: Invalid format on line %lld\n", lineNo);
+				return 1;
 			}
-			buf[pos++] = (char)c;
-		} else if (pos > 0) {
-			buf[pos] = '\0';
-			pos = 0;
-			if (!name[0]) {
-				snprintf(name, sizeof(name), "%s", buf);
-				count = 0;
-				i = 0;
-				f = nick_map_add_fragment(map, name);
-				if (!f) {
-					return -ENOMEM;
+			molecule_length = to_integer(length);
+			f = nick_map_add_fragment(map, molecule_id);
+			f->size = molecule_length;
+			if (skip_to_next_line(file, buf, sizeof(buf))) break;
+		} else if (memcmp(buf, "1\t", 2) == 0) { /* label positions */
+			char *p = buf + 2;
+			for (;;) {
+				char *q = p;
+				double value;
+				while (*q && *q != '\t' && *q != '\n') ++q;
+				if (*q == '\0') {
+					size_t size = q - p;
+					memcpy(buf, p, size);
+					if (!gzgets(file, buf + size, sizeof(buf) - size)) break;
+					p = buf;
+					continue;
 				}
-			} else if (count == 0) {
-				count = atoi(buf);
-				i = 0;
-				if (count <= 0) {
-					name[0] = '\0';
-					count = 0;
+				if (sscanf(p, "%lf", &value) != 1) {
+					fprintf(stderr, "Error: Failed in reading float value on line %lld\n", lineNo);
+					return 1;
 				}
-			} else {
-				assert(f != NULL);
-				value = atof(buf);
-				sum += value;
-				++i;
-				if (i < count) {
-					if ((err = nick_map_add_site(f,
-							to_integer(sum), STRAND_UNKNOWN)) != 0) {
-						return err;
-					}
+				nick_map_add_site(f, to_integer(value),
+						(*q == '\t' ? STRAND_UNKNOWN : STRAND_END));
+				if (*q == '\t') {
+					p = q + 1;
 				} else {
-					f->size = to_integer(sum);
-					sum = 0;
-					name[0] = '\0';
-					count = 0;
-					i = 0;
+					assert(*q == '\n');
+					f->size = to_integer(value);
+					break;
 				}
 			}
+		} else {
+			if (skip_to_next_line(file, buf, sizeof(buf))) break;
 		}
 	}
-	if (name[0] || i < count) {
-		fprintf(stderr, "Error: Unexpected EOF!\n");
-		return -EINVAL;
+	return 0;
+}
+
+static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
+{
+	char buf[256];
+	struct fragment *f = NULL;
+	char lastMapId[32] = "";
+
+	while (!gzeof(file)) {
+		++lineNo;
+		if (!gzgets(file, buf, sizeof(buf))) break;
+		if (buf[0] == '#') {
+			if (string_begins_as(buf, "# Nickase Recognition Site 1:")) {
+				char *p, *q, *e;
+				p = strchr(buf, ':');
+				assert(p != NULL);
+				++p;
+				while (*p && isblank(*p)) ++p;
+				q = strchr(p, '/');
+				if (q != NULL) {
+					*q++ = '\0';
+					e = strchr(q, '\n');
+					if (e) {
+						*e = '\0';
+					}
+					if (nick_map_set_enzyme(map, p, q)) {
+						return 1;
+					}
+				}
+			}
+			continue;
+		} else {
+			char mapId[32];
+			int ctgLen;
+			int numSites;
+			int siteId;
+			int labelChannel;
+			int position;
+			if (sscanf(buf, "%s%d%d%d%d%d", mapId, &ctgLen, &numSites, &siteId, &labelChannel, &position) != 6) {
+				fprintf(stderr, "Error: Failed to parse data on line %lld\n", lineNo);
+				return -EINVAL;
+			}
+
+			if (strcmp(lastMapId, mapId) != 0) {
+				f = nick_map_add_fragment(map, mapId);
+			}
+			assert(f != NULL);
+
+			assert(labelChannel == 0 || labelChannel == 1);
+			nick_map_add_site(f, position, (labelChannel == 1 ? 0 : STRAND_END));
+			if (labelChannel == 0) {
+				f->size = position;
+			}
+		}
 	}
 	return 0;
 }
@@ -301,7 +306,7 @@ int nick_map_load(struct nick_map *map, const char *filename)
 	c = gzgetc(file);
 	gzungetc(c, file);
 	if (c != '#') {  /* no any comment line, try as the simple format */
-		ret = load_simple(file, map);
+		ret = load_txt(file, map);
 	} else {
 		while (!gzeof(file)) {
 			++lineNo;
@@ -360,8 +365,11 @@ static int save_as_txt(gzFile file, const struct nick_map *map)
 	size_t i, j;
 	for (i = 0; i < map->fragments.size; ++i) {
 		const struct fragment *f = &map->fragments.data[i];
-		gzprintf(file, "%s %d", f->name, f->nicks.size);
-		for (j = 0; j < f->nicks.size; ++j) {
+		assert(f->nicks.size > 1);
+		assert(f->nicks.data[0].pos == 0);
+		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
+		gzprintf(file, "%s %d", f->name, f->nicks.size - 1);
+		for (j = 1; j < f->nicks.size; ++j) {
 			const struct nick *n = f->nicks.data;
 			gzprintf(file, " %d", n[j].pos - (j == 0 ? 0 : n[j - 1].pos));
 		}
@@ -386,15 +394,14 @@ static int save_as_tsv(gzFile file, const struct nick_map *map)
 
 	for (i = 0; i < map->fragments.size; ++i) {
 		const struct fragment *f = &map->fragments.data[i];
-		for (j = 0; j < f->nicks.size; ++j) {
+		assert(f->nicks.size > 1);
+		assert(f->nicks.data[0].pos == 0);
+		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
+		for (j = 1; j < f->nicks.size; ++j) {
 			const struct nick *n = f->nicks.data;
 			gzprintf(file, "%s\t%d\t%s\t%d\n",
-					f->name, n[j].pos, STRAND[n[j].strand],
-					n[j].pos - (j == 0 ? 0 : n[j - 1].pos));
+					f->name, n[j].pos, STRAND[n[j].strand], n[j].pos - n[j - 1].pos);
 		}
-		gzprintf(file, "%s\t%d\t*\t%d\n", f->name, f->size,
-				f->size - (f->nicks.size == 0 ? 0 :
-				f->nicks.data[f->nicks.size - 1].pos));
 	}
 	return 0;
 }
@@ -418,22 +425,16 @@ static int save_as_bnx(gzFile file, const struct nick_map *map)
 
 	for (i = 0; i < map->fragments.size; ++i) {
 		const struct fragment *f = &map->fragments.data[i];
-		gzprintf(file, "0\t%s\t%zd\n1", f->name, f->size);
-		for (j = 0; j < f->nicks.size; ++j) {
+		assert(f->nicks.size > 1);
+		assert(f->nicks.data[0].pos == 0);
+		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
+		gzprintf(file, "0\t%s\t%zd\n1", f->name, f->size - 1);
+		for (j = 1; j < f->nicks.size; ++j) {
 			gzprintf(file, "\t%d", f->nicks.data[j].pos);
 		}
 		gzprintf(file, "\n");
 	}
 	return 0;
-}
-
-static void write_cmap_line(gzFile file, const char *cmap_id, int contig_length,
-		size_t num_sites, size_t site_id, int label_channel, int position,
-		int stddev, int coverage, int occurance)
-{
-	gzprintf(file, "%s\t%d\t%zd\t%zd\t%d\t%d\t%d\t%d\t%d\n",
-			cmap_id, contig_length, num_sites, site_id,
-			label_channel, position, stddev, coverage, occurance);
 }
 
 static int save_as_cmap(gzFile file, const struct nick_map *map)
@@ -454,12 +455,21 @@ static int save_as_cmap(gzFile file, const struct nick_map *map)
 
 	for (i = 0; i < map->fragments.size; ++i) {
 		const struct fragment *f = &map->fragments.data[i];
-		for (j = 0; j < f->nicks.size; ++j) {
-			write_cmap_line(file, f->name, f->size,
-					f->nicks.size, j, 1, f->nicks.data[j].pos, 0, 0, 0);
+		assert(f->nicks.size > 1);
+		assert(f->nicks.data[0].pos == 0);
+		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
+		for (j = 1; j < f->nicks.size; ++j) {
+			gzprintf(file, "%s\t%d\t%zd\t%zd\t%d\t%d\t%d\t%d\t%d\n",
+					f->name,                          /* cmapId */
+					f->size,                          /* contigLength */
+					f->nicks.size - 1,                /* numSites */
+					j,                                /* siteId */
+					(j < f->nicks.size - 1 ? 1 : 0),  /* channel */
+					f->nicks.data[j].pos,             /* position */
+					0,                                /* stddev */
+					(j < f->nicks.size - 1 ? 0 : 1),  /* coverage */
+					(j < f->nicks.size - 1 ? 0 : 1)); /* occurance */
 		}
-		write_cmap_line(file, f->name, f->size,
-				f->nicks.size, f->nicks.size + 1, 0, f->size, 0, 1, 1);
 	}
 	return 0;
 }
@@ -585,6 +595,10 @@ int nick_map_load_fasta(struct nick_map *map, const char *filename, int chrom_on
 		if (!gzgets(file, line, sizeof(line))) break;
 		if (line[0] == '>') {
 			if (f) {
+				ret = nick_map_add_site(f, base_count, STRAND_END);
+				if (ret) {
+					goto out;
+				}
 				f->size = base_count;
 				if (verbose > 0) {
 					fprintf(stderr, "%d bp\n", base_count);
@@ -634,6 +648,10 @@ int nick_map_load_fasta(struct nick_map *map, const char *filename, int chrom_on
 		}
 	}
 	if (f) {
+		ret = nick_map_add_site(f, base_count, STRAND_END);
+		if (ret) {
+			goto out;
+		}
 		f->size = base_count;
 		if (verbose > 0) {
 			fprintf(stderr, "%d bp\n", base_count);

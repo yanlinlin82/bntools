@@ -34,14 +34,15 @@ struct node {
 static inline int min(int a, int b) { return (a < b ? a : b); }
 static inline int max(int a, int b) { return (a > b ? a : b); }
 
-static int align(const char *name_a, const int *a, size_t size_a,
-		const char *name_b, const int *b, size_t size_b)
+static int align(const struct fragment *fa, const struct fragment *fb)
 {
 	struct node *m;
 	size_t size, i, j, i_start, j_start;
 	size_t *result_a, *result_b, result_a_count, result_b_count;
+	size_t w = fa->nicks.size;
+	size_t h = fb->nicks.size;
 
-	size = sizeof(struct node) * size_a * size_b;
+	size = sizeof(struct node) * w * h;
 	m = malloc(size);
 	if (!m) {
 		fprintf(stderr, "Error: Failed to allocate memory for DP matrix!\n");
@@ -50,25 +51,25 @@ static int align(const char *name_a, const int *a, size_t size_a,
 	memset(m, 0, size);
 
 	if (verbose) {
-		fprintf(stdout, "align between '%s' and '%s'\n", name_a, name_b);
+		fprintf(stdout, "align between '%s' and '%s'\n", fa->name, fb->name);
 	}
 
-	for (j = 1; j < size_b; ++j) {
-		for (i = 1; i < size_a; ++i) {
-			size_t index = j * size_a + i;
+	for (j = 1; j < h; ++j) {
+		for (i = 1; i < w; ++i) {
+			size_t index = j * w + i;
 
 			for (j_start = j; j_start > 0; --j_start) {
-				int frag_b = b[j] - b[j_start - 1];
+				int frag_b = fb->nicks.data[j].pos - fb->nicks.data[j_start - 1].pos;
 
 				for (i_start = i; i_start > 0; --i_start) {
-					int frag_a = a[i] - a[i_start - 1];
+					int frag_a = fa->nicks.data[i].pos - fa->nicks.data[i_start - 1].pos;
 
 					if (j_start + 2 < j || i_start + 2 < i) continue;
 					//if (j_start + 1 < j && i_start + 1 < i) continue;
 					if (frag_b > frag_a * (1 + TOLERANCE)) break;
 
 					if (abs(frag_a - frag_b) < min(frag_a, frag_b) * TOLERANCE) {
-						int score = m[(j_start - 1) * size_a + (i_start - 1)].score + 1;
+						int score = m[(j_start - 1) * w + (i_start - 1)].score + 1;
 						if (m[index].score < score) {
 							m[index].score = score;
 							m[index].delta_i = i - i_start + 1;
@@ -81,41 +82,41 @@ static int align(const char *name_a, const int *a, size_t size_a,
 	}
 
 	if (verbose > 0) {
-		printf("a (%zd):\n", size_a);
-		for (i = 1; i < size_a; ++i) {
-			printf(" [%2zd] %-5d", i, a[i] - a[i - 1]);
+		printf("a (%zd):\n", w);
+		for (i = 1; i < w; ++i) {
+			printf(" [%2zd] %-5d", i, fa->nicks.data[i].pos - fa->nicks.data[i - 1].pos);
 			if (i % 5 == 0) printf("\n");
 		}
 		if (i % 5 != 1) printf("\n");
 
-		printf("b (%zd):\n", size_b);
-		for (i = 1; i < size_b; ++i) {
-			printf(" [%2zd] %-5d", i, b[i] - b[i - 1]);
+		printf("b (%zd):\n", h);
+		for (i = 1; i < h; ++i) {
+			printf(" [%2zd] %-5d", i, fb->nicks.data[i].pos - fb->nicks.data[i - 1].pos);
 			if (i % 5 == 0) printf("\n");
 		}
 		if (i % 5 != 1) printf("\n");
 
 		printf("matrix:\n");
-		for (j = 0; j < size_b; ++j) {
-			for (i = 0; i < size_a; ++i) {
-				const struct node *p = &m[j * size_a + i];
+		for (j = 0; j < h; ++j) {
+			for (i = 0; i < w; ++i) {
+				const struct node *p = &m[j * w + i];
 				printf("%2d/%d,%d", p->score, p->delta_i, p->delta_j);
 			}
 			printf("\n");
 		}
 	}
 
-	result_a = malloc(sizeof(size_t) * size_a);
-	result_b = malloc(sizeof(size_t) * size_b);
+	result_a = malloc(sizeof(size_t) * w);
+	result_b = malloc(sizeof(size_t) * h);
 	for (;;) {
 		int max_score = 0;
 		size_t max_score_i = 0;
 		size_t max_score_j = 0;
 
-		for (j = 0; j < size_b; ++j) {
-			for (i = 0; i < size_a; ++i) {
-				if (max_score < m[j * size_a + i].score) {
-					max_score = m[j * size_a + i].score;
+		for (j = 0; j < h; ++j) {
+			for (i = 0; i < w; ++i) {
+				if (max_score < m[j * w + i].score) {
+					max_score = m[j * w + i].score;
 					max_score_i = i;
 					max_score_j = j;
 				}
@@ -133,7 +134,7 @@ static int align(const char *name_a, const int *a, size_t size_a,
 		result_b_count = 0;
 		for (;;) {
 			size_t k;
-			struct node *p = &m[j * size_a + i];
+			struct node *p = &m[j * w + i];
 
 			result_a[result_a_count++] = i;
 			result_b[result_b_count++] = j;
@@ -141,19 +142,19 @@ static int align(const char *name_a, const int *a, size_t size_a,
 			if (p->delta_i == 0 && p->delta_j == 0) break;
 
 			if (verbose > 0) {
-				printf("a: %d { ", a[i] - a[i - p->delta_i]);
+				printf("a: %d { ", fa->nicks.data[i].pos - fa->nicks.data[i - p->delta_i].pos);
 				for (k = 0; k < p->delta_i; ++k) {
 					size_t index = i - p->delta_i + k;
 					if (k > 0) printf(", ");
-					printf("[%zd] %d", index, a[index + 1] - a[index]);
+					printf("[%zd] %d", index, fa->nicks.data[index + 1].pos - fa->nicks.data[index].pos);
 				}
 				printf(" }\t");
 
-				printf("b: %d { ", b[i] - b[i - p->delta_j]);
+				printf("b: %d { ", fb->nicks.data[i].pos - fb->nicks.data[i - p->delta_j].pos);
 				for (k = 0; k < p->delta_j; ++k) {
 					size_t index = j - p->delta_j + k;
 					if (k > 0) printf(", ");
-					printf("[%zd] %d", index, b[index + 1] - b[index]);
+					printf("[%zd] %d", index, fb->nicks.data[index + 1].pos - fb->nicks.data[index].pos);
 				}
 				printf(" }\n");
 			}
@@ -165,7 +166,7 @@ static int align(const char *name_a, const int *a, size_t size_a,
 
 		{
 			static int count = 0;
-			fprintf(stdout, ">0\t%d\t%s\t%s\n", ++count, name_a, name_b);
+			fprintf(stdout, ">0\t%d\t%s\t%s\n", ++count, fa->name, fb->name);
 		}
 		for (i = 0; i < result_a_count; ++i) {
 			fprintf(stdout, "%s%zd", (i == 0 ? "" : "\t"), result_a[i]);
@@ -188,54 +189,13 @@ static int align(const char *name_a, const int *a, size_t size_a,
 
 static int align_between_maps(const struct nick_map *map1, const struct nick_map *map2)
 {
-	size_t i, j, k;
-	size_t map1_max_count = 0;
-	size_t map2_max_count = 0;
-	int *a, *b;
-
-	for (i = 0; i < map1->fragments.size; ++i) {
-		if (map1_max_count < map1->fragments.data[i].nicks.size) {
-			map1_max_count = map1->fragments.data[i].nicks.size;
-		}
-	}
-	++map1_max_count;
-
-	for (i = 0; i < map2->fragments.size; ++i) {
-		if (map2_max_count < map2->fragments.data[i].nicks.size) {
-			map2_max_count = map2->fragments.data[i].nicks.size;
-		}
-	}
-	++map2_max_count;
-
-	a = malloc(sizeof(int) * map1_max_count);
-	b = malloc(sizeof(int) * map2_max_count);
-	if (!a || !b) {
-		free(b);
-		free(a);
-		return -ENOMEM;
-	}
-
+	size_t i, j;
 	fprintf(stdout, "#>0\tAlignmentID\tMol0ID\tMol1ID\n");
 	for (i = 0; i < map1->fragments.size; ++i) {
-		const struct fragment *f1 = &map1->fragments.data[i];
-		a[0] = 0;
-		for (k = 0; k < f1->nicks.size; ++k) {
-			a[k + 1] = f1->nicks.data[k].pos;
-		}
-
 		for (j = (map1 == map2 ? i + 1: 0); j < map2->fragments.size; ++j) {
-			const struct fragment *f2 = &map2->fragments.data[j];
-			b[0] = 0;
-			for (k = 0; k < f2->nicks.size; ++k) {
-				b[k + 1] = f2->nicks.data[k].pos;
-			}
-
-			align(map1->fragments.data[i].name, a, f1->nicks.size + 1,
-				map2->fragments.data[j].name, b, f2->nicks.size + 1);
+			align(&map1->fragments.data[i], &map2->fragments.data[j]);
 		}
 	}
-	free(b);
-	free(a);
 	return 0;
 }
 

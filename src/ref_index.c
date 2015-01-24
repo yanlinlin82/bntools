@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 #include "ref_index.h"
 
 size_t ref_node_count = 0;
@@ -36,11 +37,14 @@ void generate_ref_nodes(const struct nick_map *ref)
 
 	for (i = 0, k = 0; i < ref->fragments.size; ++i) {
 		const struct fragment *f = &ref->fragments.data[i];
-		for (j = 0; j < f->nicks.size; ++j) {
+		assert(f->nicks.size > 1);
+		assert(f->nicks.data[0].pos == 0);
+		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
+		for (j = 1; j < f->nicks.size; ++j) {
 			ref_nodes[k].chrom = i;
 			ref_nodes[k].pos = f->nicks.data[j].pos;
-			ref_nodes[k].size = f->nicks.data[j].pos - (j == 0 ? 0 : f->nicks.data[j - 1].pos);
-			ref_nodes[k].flag = (j == 0 ? FIRST_FRAGMENT : 0) | (j + 1 == f->nicks.size ? LAST_FRAGMENT : 0);
+			ref_nodes[k].size = f->nicks.data[j].pos - f->nicks.data[j - 1].pos;
+			ref_nodes[k].flag = (j == 1 ? FIRST_INTERVAL : 0) | (j + 1 == f->nicks.size ? LAST_INTERVAL : 0);
 			ref_nodes[k].uniq_count = 0;
 			ref_index[k] = &ref_nodes[k];
 			++k;

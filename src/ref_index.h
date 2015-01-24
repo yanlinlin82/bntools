@@ -4,8 +4,10 @@
 #include <string.h>
 #include "nick_map.h"
 
-#define FIRST_FRAGMENT 1
-#define LAST_FRAGMENT  2
+enum node_flag {
+	FIRST_INTERVAL = 1,
+	LAST_INTERVAL  = 2,
+};
 
 struct node {
 	size_t chrom;  /* item index in ref */

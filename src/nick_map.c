@@ -99,6 +99,12 @@ struct fragment *nick_map_add_fragment(struct nick_map *map, const char *name)
 	if (!f->name) {
 		return NULL;
 	}
+	if (array_reserve(f->nicks, 1)) {
+		free(f->name);
+		return NULL;
+	}
+	f->nicks.data[0].strand = STRAND_END;
+	++f->nicks.size;
 	++map->fragments.size;
 	return f;
 }
