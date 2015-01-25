@@ -9,11 +9,17 @@ enum node_flag {
 	LAST_INTERVAL  = 2,
 };
 
-struct node {
+struct ref_node {
 	size_t chrom;  /* item index in ref */
+	size_t label;  /* label index in fragment/chrom */
 	int pos;
 	int size;
 	int flag;
+};
+
+struct ref_index {
+	const struct ref_node *node;
+	int direct;
 	int uniq_count;
 };
 
@@ -26,8 +32,8 @@ struct ref_map {
 	int palindrome;
 
 	size_t size;
-	struct node *nodes;
-	struct node **index;
+	struct ref_node *_nodes;
+	struct ref_index *_index;
 };
 
 void ref_map_init(struct ref_map *ref);

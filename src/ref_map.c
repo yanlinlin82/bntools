@@ -14,8 +14,8 @@ void ref_map_init(struct ref_map *ref)
 
 void ref_map_free(struct ref_map *ref)
 {
-	free(ref->nodes);
-	free(ref->index);
+	free(ref->_nodes);
+	free(ref->_index);
 	nick_map_free(&ref->map);
 }
 
@@ -217,28 +217,38 @@ out:
 	return ret;
 }
 
+static int meet_last(const struct ref_index *p, int i)
+{
+	if (p->direct > 0) {
+		return (p->node[i].flag & LAST_INTERVAL) != 0;
+	} else {
+		assert(p->direct < 0);
+		return (p->node[i].flag & FIRST_INTERVAL) != 0;
+	}
+}
+
 static int sort_by_size(const void *a, const void *b)
 {
-	const struct node *pa = *(const struct node * const *)a;
-	const struct node *pb = *(const struct node * const *)b;
-	size_t i;
-	for (i = 0;; ++i) {
-		if (pa[i].size < pb[i].size) return -1;
-		if (pa[i].size > pb[i].size) return 1;
-		if ((pa[i].flag & LAST_INTERVAL) && (pb[i].flag & LAST_INTERVAL)) return 0;
-		if (pa[i].flag & LAST_INTERVAL) return -1;
-		if (pb[i].flag & LAST_INTERVAL) return 1;
+	const struct ref_index *pa = a;
+	const struct ref_index *pb = b;
+	int i, j;
+	for (i = 0, j = 0; ; i += pa->direct, j += pb->direct) {
+		if (pa->node[i].size < pb->node[j].size) return -1;
+		if (pa->node[i].size > pb->node[j].size) return 1;
+		if (meet_last(pa, i) && meet_last(pb, j)) return 0;
+		if (meet_last(pa, i)) return -1;
+		if (meet_last(pb, j)) return 1;
 	}
 	return 0;
 }
 
 void ref_map_build_index(struct ref_map *ref)
 {
-	size_t i, j, k;
+	size_t i, j, k, m;
 
 	assert(ref->size == 0);
-	assert(ref->nodes == NULL);
-	assert(ref->index == NULL);
+	assert(ref->_nodes == NULL);
+	assert(ref->_index == NULL);
 
 	ref->size = 0;
 	for (i = 0; i < ref->map.fragments.size; ++i) {
@@ -247,38 +257,46 @@ void ref_map_build_index(struct ref_map *ref)
 		}
 	}
 
-	ref->nodes = malloc(sizeof(struct node) * ref->size);
-	ref->index = malloc(sizeof(struct node *) * ref->size);
+	ref->_nodes = malloc(sizeof(struct ref_node) * ref->size);
+	ref->_index = malloc(sizeof(struct ref_index) * ref->size * 2);
 
 	for (i = 0, k = 0; i < ref->map.fragments.size; ++i) {
 		const struct fragment *f = &ref->map.fragments.data[i];
-		for (j = 1; j < f->_nicks.size; ++j) {
-			ref->nodes[k].chrom = i;
-			ref->nodes[k].pos = f->_nicks.data[j].pos;
-			ref->nodes[k].size = f->_nicks.data[j].pos - f->_nicks.data[j - 1].pos;
-			ref->nodes[k].flag = (j == 1 ? FIRST_INTERVAL : 0) | (j + 1 == f->_nicks.size ? LAST_INTERVAL : 0);
-			ref->nodes[k].uniq_count = 0;
-			ref->index[k] = &ref->nodes[k];
+		for (j = 0; j + 1 < f->_nicks.size; ++j) {
+			ref->_nodes[k].chrom = i;
+			ref->_nodes[k].label = j + 1;
+			ref->_nodes[k].pos = f->_nicks.data[j].pos;
+			ref->_nodes[k].size = f->_nicks.data[j + 1].pos - f->_nicks.data[j].pos;
+			ref->_nodes[k].flag = (j == 0 ? FIRST_INTERVAL : 0)
+					| (j + 2 == f->_nicks.size ? LAST_INTERVAL : 0);
+			for (m = 0; m < 2; ++m) {
+				ref->_index[k * 2 + m].node = &ref->_nodes[k];
+				ref->_index[k * 2 + m].direct = (m == 0 ? 1 : -1);
+				ref->_index[k * 2 + m].uniq_count = 0;
+			}
 			++k;
 		}
 	}
 
-	qsort(ref->index, ref->size, sizeof(struct node *), sort_by_size);
+	qsort(ref->_index, ref->size * 2, sizeof(struct ref_index), sort_by_size);
 
-	for (i = 0; i + 1 < ref->size; ++i) {
-		struct node *a = ref->index[i];
-		struct node *b = ref->index[i + 1];
-		struct node *end = ref->nodes + ref->size;
-		for (j = 0; a + j < end && b + j < end; ++j) {
-			if (a[j].size != b[j].size) {
+	for (i = 0; i + 1 < ref->size * 2; ++i) {
+		struct ref_index *a = &ref->_index[i];
+		struct ref_index *b = &ref->_index[i + 1];
+		int x, y, z;
+		for (x = 0, y = 0, z = 0; ;
+				x += ref->_index[i].direct, y += ref->_index[i + 1].direct, ++z) {
+			if (a->node[x].size != b->node[y].size) break;
+			if (meet_last(a, x) || meet_last(b, y)) {
+				++z;
 				break;
 			}
 		}
-		if (a->uniq_count < j + 1) {
-			a->uniq_count = j + 1;
+		if (a->uniq_count < z + 1) {
+			a->uniq_count = z + 1;
 		}
-		if (b->uniq_count < j + 1) {
-			b->uniq_count = j + 1;
+		if (b->uniq_count < z + 1) {
+			b->uniq_count = z + 1;
 		}
 	}
 }
@@ -287,15 +305,19 @@ void ref_map_dump(const struct ref_map *ref)
 {
 	size_t i, j;
 
-	fprintf(stdout, "#id\tname\tpos\tsize\tflag\tuniq\tseq\n");
+	fprintf(stdout, "#id\tname\tlabel\tstrand\tpos\tsize\tflag\tuniq\tseq\n");
 
-	for (i = 0; i < ref->size; ++i) {
-		fprintf(stdout, "%zd\t%s\t%d\t%d\t%d\t%d\t", i + 1,
-				ref->map.fragments.data[ref->index[i]->chrom].name,
-				ref->index[i]->pos, ref->index[i]->size, ref->index[i]->flag,
-				ref->index[i]->uniq_count);
-		for (j = 0; j < ref->index[i]->uniq_count; ++j) {
-			fprintf(stdout, "%s%d", (j == 0 ? "": ","), ref->index[i][j].size);
+	for (i = 0; i < ref->size * 2; ++i) {
+		const struct ref_index *r = &ref->_index[i];
+		fprintf(stdout, "%zd\t%s\t%zd\t%s\t%d\t%d\t%d\t%d\t", i + 1,
+				ref->map.fragments.data[r->node->chrom].name,
+				r->node->label, (r->direct > 0 ? "+" : "-"),
+				r->node->pos, r->node->size, r->node->flag,
+				r->uniq_count);
+		for (j = 0; j < r->uniq_count; ++j) {
+			const struct ref_node *n = &r->node[j * r->direct];
+			fprintf(stdout, "%s%d", (j == 0 ? "": ","), n->size);
+			if (meet_last(r, j * r->direct)) break;
 		}
 		fprintf(stdout, "\n");
 	}
