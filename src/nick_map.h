@@ -30,7 +30,7 @@ struct nick {
 struct fragment {  /* molecule, contig or chromosome */
 	char *name;
 	int size;  /* in bp */
-	array(struct nick) _nicks;  /* label positions */
+	array(struct nick) nicks;  /* label positions */
 };
 
 struct nick_map {

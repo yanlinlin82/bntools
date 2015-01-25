@@ -15,7 +15,7 @@ void nick_map_free(struct nick_map *map)
 	size_t i;
 	for (i = 0; i < map->fragments.size; ++i) {
 		free(map->fragments.data[i].name);
-		array_free(map->fragments.data[i]._nicks);
+		array_free(map->fragments.data[i].nicks);
 	}
 	array_free(map->fragments);
 }
@@ -56,22 +56,22 @@ int nick_map_add_site(struct fragment *f, int pos, unsigned int flag)
 {
 	size_t i, j;
 
-	for (i = f->_nicks.size; i > 0; --i) {
-		if (f->_nicks.data[i - 1].pos == pos) {
-			f->_nicks.data[i - 1].flag |= flag;
+	for (i = f->nicks.size; i > 0; --i) {
+		if (f->nicks.data[i - 1].pos == pos) {
+			f->nicks.data[i - 1].flag |= flag;
 			return 0;
-		} else if (f->_nicks.data[i - 1].pos < pos) {
+		} else if (f->nicks.data[i - 1].pos < pos) {
 			break;
 		}
 	}
-	if (array_reserve(f->_nicks, f->_nicks.size + 1)) {
+	if (array_reserve(f->nicks, f->nicks.size + 1)) {
 		return -ENOMEM;
 	}
-	for (j = f->_nicks.size; j > i; --j) {
-		memcpy(&f->_nicks.data[j], &f->_nicks.data[j - 1], sizeof(struct nick));
+	for (j = f->nicks.size; j > i; --j) {
+		memcpy(&f->nicks.data[j], &f->nicks.data[j - 1], sizeof(struct nick));
 	}
-	f->_nicks.data[i].pos = pos;
-	f->_nicks.data[i].flag = flag;
-	++f->_nicks.size;
+	f->nicks.data[i].pos = pos;
+	f->nicks.data[i].flag = flag;
+	++f->nicks.size;
 	return 0;
 }

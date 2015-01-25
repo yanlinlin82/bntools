@@ -14,8 +14,8 @@ void ref_map_init(struct ref_map *ref)
 
 void ref_map_free(struct ref_map *ref)
 {
-	free(ref->_nodes);
-	free(ref->_index);
+	free(ref->nodes);
+	free(ref->index);
 	nick_map_free(&ref->map);
 }
 
@@ -247,45 +247,45 @@ void ref_map_build_index(struct ref_map *ref)
 	size_t i, j, k, m;
 
 	assert(ref->size == 0);
-	assert(ref->_nodes == NULL);
-	assert(ref->_index == NULL);
+	assert(ref->nodes == NULL);
+	assert(ref->index == NULL);
 
 	ref->size = 0;
 	for (i = 0; i < ref->map.fragments.size; ++i) {
-		if (ref->map.fragments.data[i]._nicks.size > 0) {
-			ref->size += ref->map.fragments.data[i]._nicks.size - 1;
+		if (ref->map.fragments.data[i].nicks.size > 0) {
+			ref->size += ref->map.fragments.data[i].nicks.size - 1;
 		}
 	}
 
-	ref->_nodes = malloc(sizeof(struct ref_node) * ref->size);
-	ref->_index = malloc(sizeof(struct ref_index) * ref->size * 2);
+	ref->nodes = malloc(sizeof(struct ref_node) * ref->size);
+	ref->index = malloc(sizeof(struct ref_index) * ref->size * 2);
 
 	for (i = 0, k = 0; i < ref->map.fragments.size; ++i) {
 		const struct fragment *f = &ref->map.fragments.data[i];
-		for (j = 0; j + 1 < f->_nicks.size; ++j) {
-			ref->_nodes[k].chrom = i;
-			ref->_nodes[k].label = j + 1;
-			ref->_nodes[k].pos = f->_nicks.data[j].pos;
-			ref->_nodes[k].size = f->_nicks.data[j + 1].pos - f->_nicks.data[j].pos;
-			ref->_nodes[k].flag = (j == 0 ? FIRST_INTERVAL : 0)
-					| (j + 2 == f->_nicks.size ? LAST_INTERVAL : 0);
+		for (j = 0; j + 1 < f->nicks.size; ++j) {
+			ref->nodes[k].chrom = i;
+			ref->nodes[k].label = j + 1;
+			ref->nodes[k].pos = f->nicks.data[j].pos;
+			ref->nodes[k].size = f->nicks.data[j + 1].pos - f->nicks.data[j].pos;
+			ref->nodes[k].flag = (j == 0 ? FIRST_INTERVAL : 0)
+					| (j + 2 == f->nicks.size ? LAST_INTERVAL : 0);
 			for (m = 0; m < 2; ++m) {
-				ref->_index[k * 2 + m].node = &ref->_nodes[k];
-				ref->_index[k * 2 + m].direct = (m == 0 ? 1 : -1);
-				ref->_index[k * 2 + m].uniq_count = 0;
+				ref->index[k * 2 + m].node = &ref->nodes[k];
+				ref->index[k * 2 + m].direct = (m == 0 ? 1 : -1);
+				ref->index[k * 2 + m].uniq_count = 0;
 			}
 			++k;
 		}
 	}
 
-	qsort(ref->_index, ref->size * 2, sizeof(struct ref_index), sort_by_size);
+	qsort(ref->index, ref->size * 2, sizeof(struct ref_index), sort_by_size);
 
 	for (i = 0; i + 1 < ref->size * 2; ++i) {
-		struct ref_index *a = &ref->_index[i];
-		struct ref_index *b = &ref->_index[i + 1];
+		struct ref_index *a = &ref->index[i];
+		struct ref_index *b = &ref->index[i + 1];
 		int x, y, z;
 		for (x = 0, y = 0, z = 0; ;
-				x += ref->_index[i].direct, y += ref->_index[i + 1].direct, ++z) {
+				x += ref->index[i].direct, y += ref->index[i + 1].direct, ++z) {
 			if (a->node[x].size != b->node[y].size) break;
 			if (meet_last(a, x) || meet_last(b, y)) {
 				++z;
@@ -308,7 +308,7 @@ void ref_map_dump(const struct ref_map *ref)
 	fprintf(stdout, "#id\tname\tlabel\tstrand\tpos\tsize\tflag\tuniq\tseq\n");
 
 	for (i = 0; i < ref->size * 2; ++i) {
-		const struct ref_index *r = &ref->_index[i];
+		const struct ref_index *r = &ref->index[i];
 		fprintf(stdout, "%zd\t%s\t%zd\t%s\t%d\t%d\t%d\t%d\t", i + 1,
 				ref->map.fragments.data[r->node->chrom].name,
 				r->node->label, (r->direct > 0 ? "+" : "-"),

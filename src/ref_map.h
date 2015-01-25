@@ -32,8 +32,8 @@ struct ref_map {
 	int palindrome;
 
 	size_t size;
-	struct ref_node *_nodes;
-	struct ref_index *_index;
+	struct ref_node *nodes;
+	struct ref_index *index;
 };
 
 void ref_map_init(struct ref_map *ref);

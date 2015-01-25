@@ -360,9 +360,9 @@ static int save_as_txt(gzFile file, const struct nick_map *map)
 	size_t i, j;
 	for (i = 0; i < map->fragments.size; ++i) {
 		f = &map->fragments.data[i];
-		gzprintf(file, "%s %d", f->name, f->_nicks.size + 1);
-		for (j = 0, n = NULL; j < f->_nicks.size; ++j) {
-			n = &f->_nicks.data[j];
+		gzprintf(file, "%s %d", f->name, f->nicks.size + 1);
+		for (j = 0, n = NULL; j < f->nicks.size; ++j) {
+			n = &f->nicks.data[j];
 			gzprintf(file, " %d", n->pos - (j == 0 ? 0 : (n - 1)->pos));
 		}
 		gzprintf(file, " %d\n", f->size - (n ? n->pos : 0));
@@ -388,8 +388,8 @@ static int save_as_tsv(gzFile file, const struct nick_map *map)
 
 	for (i = 0; i < map->fragments.size; ++i) {
 		f = &map->fragments.data[i];
-		for (j = 0, n = NULL; j < f->_nicks.size; ++j) {
-			n = &f->_nicks.data[j];
+		for (j = 0, n = NULL; j < f->nicks.size; ++j) {
+			n = &f->nicks.data[j];
 			gzprintf(file, "%s\t%d\t%s\t%d\n",
 					f->name, n->pos, STRAND[n->flag & 3], n->pos - (j == 0 ? 0 : (n - 1)->pos));
 		}
@@ -420,8 +420,8 @@ static int save_as_bnx(gzFile file, const struct nick_map *map)
 	for (i = 0; i < map->fragments.size; ++i) {
 		f = &map->fragments.data[i];
 		gzprintf(file, "0\t%s\t%zd\n1", f->name, f->size);
-		for (j = 0; j < f->_nicks.size; ++j) {
-			gzprintf(file, "\t%d", f->_nicks.data[j].pos);
+		for (j = 0; j < f->nicks.size; ++j) {
+			gzprintf(file, "\t%d", f->nicks.data[j].pos);
 		}
 		gzprintf(file, "\t%d\n", f->size);
 	}
@@ -447,13 +447,13 @@ static int save_as_cmap(gzFile file, const struct nick_map *map)
 
 	for (i = 0; i < map->fragments.size; ++i) {
 		f = &map->fragments.data[i];
-		for (j = 0; j < f->_nicks.size; ++j) {
+		for (j = 0; j < f->nicks.size; ++j) {
 			gzprintf(file, "%s\t%d\t%zd\t%zd\t%d\t%d\t%d\t%d\t%d\n",
-					f->name, f->size, f->_nicks.size, j + 1, 1,
-					f->_nicks.data[j].pos, 0, 0, 0);
+					f->name, f->size, f->nicks.size, j + 1, 1,
+					f->nicks.data[j].pos, 0, 0, 0);
 		}
 		gzprintf(file, "%s\t%d\t%zd\t%zd\t%d\t%d\t%d\t%d\t%d\n",
-				f->name, f->size, f->_nicks.size, f->_nicks.size + 1, 0,
+				f->name, f->size, f->nicks.size, f->nicks.size + 1, 0,
 				f->size, 0, 1, 1);
 	}
 	return 0;
