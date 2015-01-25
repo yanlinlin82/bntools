@@ -37,19 +37,19 @@ static int check_options(int argc, char * const argv[])
 
 int stat_main(int argc, char * const argv[])
 {
-	struct nick_map ref;
+	struct ref_map ref;
 
 	if (check_options(argc, argv)) {
 		return 1;
 	}
 
-	nick_map_init(&ref);
-	if (nick_map_load(&ref, argv[optind])) {
+	ref_map_init(&ref);
+	if (nick_map_load(&ref.map, argv[optind])) {
 		return 1;
 	}
 	generate_ref_nodes(&ref);
 	print_sorted_ref(&ref);
 
-	nick_map_free(&ref);
+	ref_map_free(&ref);
 	return 0;
 }

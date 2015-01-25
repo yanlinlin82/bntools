@@ -33,7 +33,7 @@ static void print_item(const char *name, const char *chrom, int pos, int direct,
 			size, labels, rstart, rend, qstart, qend);
 }
 
-static void map(struct nick_map *ref, struct fragment *qry_item)
+static void map(struct ref_map *ref, struct fragment *qry_item)
 {
 	size_t i, j, index;
 	int *intervals;
@@ -54,24 +54,24 @@ static void map(struct nick_map *ref, struct fragment *qry_item)
 
 	while (qstart + 1 < qry_item->nicks.size) {
 		size_t max_count = 0;
-		for (i = 0; i < ref_node_count; ++i) {
-			if (ref_index[i]->size < intervals[qstart] * (1 - TOLERANCE)) continue;
-			if (ref_index[i]->size > intervals[qstart] * (1 + TOLERANCE)) break;
+		for (i = 0; i < ref->size; ++i) {
+			if (ref->index[i]->size < intervals[qstart] * (1 - TOLERANCE)) continue;
+			if (ref->index[i]->size > intervals[qstart] * (1 + TOLERANCE)) break;
 
-			index = ref_index[i] - ref_nodes;
+			index = ref->index[i] - ref->nodes;
 
 			for (direct = 1; direct >= -1; direct -= 2) {
 				for (j = 1; j < qry_item->nicks.size; ++j) {
-					if (ref_nodes[index + direct * j].size < intervals[qstart + j] * (1 - TOLERANCE)) break;
-					if (ref_nodes[index + direct * j].size > intervals[qstart + j] * (1 + TOLERANCE)) break;
+					if (ref->nodes[index + direct * j].size < intervals[qstart + j] * (1 - TOLERANCE)) break;
+					if (ref->nodes[index + direct * j].size > intervals[qstart + j] * (1 + TOLERANCE)) break;
 				}
 				if (j >= MIN_MATCH) {
-					int size = ref_nodes[index + direct * j].pos - ref_nodes[index].pos;
+					int size = ref->nodes[index + direct * j].pos - ref->nodes[index].pos;
 					if (size < 0) size = -size;
 
 					print_item(qry_item->name,
-							ref->fragments.data[ref_index[i]->chrom].name,
-							ref_index[i]->pos, direct,
+							ref->map.fragments.data[ref->index[i]->chrom].name,
+							ref->index[i]->pos, direct,
 							size, j, index, index + direct * (j - 1),
 							qstart, qstart + j - 1);
 					if (max_count < j) {
@@ -105,22 +105,23 @@ static int check_options(int argc, char * const argv[])
 
 int map_main(int argc, char * const argv[])
 {
-	struct nick_map ref, qry;
+	struct ref_map ref;
+	struct nick_map qry;
 	size_t i;
 
 	if (check_options(argc, argv)) {
 		return 1;
 	}
 
-	nick_map_init(&ref);
-	if (nick_map_load(&ref, argv[optind])) {
+	ref_map_init(&ref);
+	if (nick_map_load(&ref.map, argv[optind])) {
 		return 1;
 	}
 	generate_ref_nodes(&ref);
 
 	nick_map_init(&qry);
 	if (nick_map_load(&qry, argv[optind + 1])) {
-		nick_map_free(&ref);
+		ref_map_free(&ref);
 		return 1;
 	}
 
@@ -130,6 +131,6 @@ int map_main(int argc, char * const argv[])
 	}
 
 	nick_map_free(&qry);
-	nick_map_free(&ref);
+	ref_map_free(&ref);
 	return 0;
 }
