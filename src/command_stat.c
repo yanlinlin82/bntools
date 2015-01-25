@@ -47,8 +47,8 @@ int stat_main(int argc, char * const argv[])
 	if (nick_map_load(&ref.map, argv[optind])) {
 		return 1;
 	}
-	generate_ref_nodes(&ref);
-	print_sorted_ref(&ref);
+	ref_map_build_index(&ref);
+	ref_map_dump(&ref);
 
 	ref_map_free(&ref);
 	return 0;

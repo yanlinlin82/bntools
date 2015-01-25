@@ -239,7 +239,7 @@ static int sort_by_size(const void *a, const void *b)
 	return 0;
 }
 
-void generate_ref_nodes(struct ref_map *ref)
+void ref_map_build_index(struct ref_map *ref)
 {
 	size_t i, j, k;
 
@@ -291,7 +291,7 @@ void generate_ref_nodes(struct ref_map *ref)
 	}
 }
 
-void print_sorted_ref(const struct ref_map *ref)
+void ref_map_dump(const struct ref_map *ref)
 {
 	size_t i, j;
 

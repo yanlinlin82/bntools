@@ -36,7 +36,7 @@ int ref_map_set_enzyme(struct ref_map *ref, const char *enzyme, const char *rec_
 
 int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_only, int verbose);
 
-void generate_ref_nodes(struct ref_map *ref);
-void print_sorted_ref(const struct ref_map *ref);
+void ref_map_build_index(struct ref_map *ref);
+void ref_map_dump(const struct ref_map *ref);
 
 #endif /* __REF_MAP_H__ */

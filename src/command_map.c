@@ -117,7 +117,7 @@ int map_main(int argc, char * const argv[])
 	if (nick_map_load(&ref.map, argv[optind])) {
 		return 1;
 	}
-	generate_ref_nodes(&ref);
+	ref_map_build_index(&ref);
 
 	nick_map_init(&qry);
 	if (nick_map_load(&qry, argv[optind + 1])) {
