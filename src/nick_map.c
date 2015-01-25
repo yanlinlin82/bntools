@@ -8,7 +8,6 @@
 void nick_map_init(struct nick_map *map)
 {
 	memset(map, 0, sizeof(struct nick_map));
-	map->nick_offset = -1;
 }
 
 void nick_map_free(struct nick_map *map)
@@ -21,62 +20,12 @@ void nick_map_free(struct nick_map *map)
 	array_free(map->fragments);
 }
 
-int nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *rec_seq)
+void nick_map_set_enzyme(struct nick_map *map, const char *enzyme, const char *rec_seq)
 {
-	char checked_rec_seq[sizeof(map->rec_seq)];
-	char rec_bases[sizeof(map->rec_bases)];
-	int rec_seq_size;
-	int nick_offset = -1;
-	int palindrome;
-	int i;
-
-	for (i = 0, rec_seq_size = 0; rec_seq[i]; ++i) {
-		if (rec_seq[i] == '^') {
-			if (nick_offset >= 0) {
-				fprintf(stderr, "Error: Invalid recognition sequence '%s'\n", rec_seq);
-				return 1;
-			}
-			nick_offset = i;
-		} else {
-			char c = char_to_base(rec_seq[i]);
-			if (c == 0) {
-				fprintf(stderr, "Error: Invalid character '%c' in recognition sequence '%s'\n", rec_seq[i], rec_seq);
-				return 1;
-			}
-			if (rec_seq_size >= sizeof(rec_bases)) {
-				fprintf(stderr, "Error: Recognition sequence is too long\n");
-				return 1;
-			}
-			rec_bases[rec_seq_size++] = c;
-		}
-	}
-	for (i = 0; i < rec_seq_size / 2; ++i) {
-		if (rec_bases[i] != base_to_comp(rec_bases[rec_seq_size - i - 1])) {
-			palindrome = 0;
-			break;
-		}
-	}
-	snprintf(checked_rec_seq, sizeof(checked_rec_seq), "%s%s",
-			(nick_offset < 0 ? "^" : ""), rec_seq);
-
-	if (map->nick_offset >= 0) { /* merging maps */
-		if (strcmp(map->enzyme, enzyme) != 0 ||
-				strcmp(map->rec_seq, checked_rec_seq) != 0) {
-			fprintf(stderr, "Error: Merging is supported for only single enzyme\n");
-			return 1;
-		}
-	} else {
-		snprintf(map->enzyme, sizeof(map->enzyme), "%s", enzyme);
-		snprintf(map->rec_seq, sizeof(map->rec_seq), "%s", checked_rec_seq);
-		assert(strcmp(map->enzyme, enzyme) == 0);
-		assert(strcmp(map->rec_seq, checked_rec_seq) == 0);
-
-		memcpy(map->rec_bases, rec_bases, sizeof(map->rec_bases));
-		map->rec_seq_size = rec_seq_size;
-		map->nick_offset = (nick_offset < 0 ? 0 : nick_offset);
-		map->palindrome = palindrome;
-	}
-	return 0;
+	snprintf(map->enzyme, sizeof(map->enzyme), "%s", enzyme);
+	snprintf(map->rec_seq, sizeof(map->rec_seq), "%s", rec_seq);
+	assert(strcmp(map->enzyme, enzyme) == 0);
+	assert(strcmp(map->rec_seq, rec_seq) == 0);
 }
 
 struct fragment *nick_map_add_fragment(struct nick_map *map, const char *name)

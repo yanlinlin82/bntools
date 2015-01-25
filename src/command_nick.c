@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include <limits.h>
 #include "base_map.h"
-#include "nick_map.h"
+#include "ref_map.h"
 
 #define DEF_OUTPUT "stdout"
 #define DEF_FORMAT "tsv"
@@ -78,26 +78,26 @@ static int check_options(int argc, char * const argv[])
 
 int nick_main(int argc, char * const argv[])
 {
-	struct nick_map map;
+	struct ref_map ref;
 	int i, ret = 0;
 
 	if (check_options(argc, argv)) {
 		return 1;
 	}
 
-	nick_map_init(&map);
+	ref_map_init(&ref);
 
-	if ((ret = nick_map_set_enzyme(&map, enzyme, rec_seq)) != 0) {
+	if ((ret = ref_map_set_enzyme(&ref, enzyme, rec_seq)) != 0) {
 		goto final;
 	}
 
 	for (i = optind; i < argc; ++i) {
-		if ((ret = nick_map_load_fasta(&map, argv[i], chrom_only, verbose)) != 0) {
+		if ((ret = nick_map_load_fasta(&ref, argv[i], chrom_only, verbose)) != 0) {
 			goto final;
 		}
 	}
-	ret = nick_map_save(&map, output_file, format);
+	ret = nick_map_save(&ref.map, output_file, format);
 final:
-	nick_map_free(&map);
+	ref_map_free(&ref);
 	return ret;
 }

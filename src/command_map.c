@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include "nick_map.h"
-#include "ref_index.h"
+#include "ref_map.h"
 
 #define TOLERANCE 0.1
 #define MIN_MATCH 4
