@@ -372,6 +372,7 @@ static int save_as_txt(gzFile file, const struct nick_map *map)
 
 static int save_as_tsv(gzFile file, const struct nick_map *map)
 {
+	const char * const STRAND[] = { "?", "+", "-", "+/-" };
 	const struct fragment *f;
 	const struct nick *n;
 	size_t i, j;
@@ -383,17 +384,17 @@ static int save_as_tsv(gzFile file, const struct nick_map *map)
 	gzprintf(file, "##program=bntools\n");
 	gzprintf(file, "##programversion="VERSION"\n");
 	write_command_line(file);
-	gzprintf(file, "#name\tpos\tflag\tsize\n");
+	gzprintf(file, "#name\tpos\tstrand\tsize\n");
 
 	for (i = 0; i < map->fragments.size; ++i) {
 		f = &map->fragments.data[i];
 		for (j = 0, n = NULL; j < f->_nicks.size; ++j) {
 			n = &f->_nicks.data[j];
-			gzprintf(file, "%s\t%d\t%u\t%d\n",
-					f->name, n->pos, n[j].flag, n->pos - (j == 0 ? 0 : (n - 1)->pos));
+			gzprintf(file, "%s\t%d\t%s\t%d\n",
+					f->name, n->pos, STRAND[n->flag & 3], n->pos - (j == 0 ? 0 : (n - 1)->pos));
 		}
-		gzprintf(file, "%s\t%d\t%u\t%d\n",
-				f->name, f->size, 0, f->size - (n ? n->pos : 0));
+		gzprintf(file, "%s\t%d\t*\t%d\n",
+				f->name, f->size, f->size - (n ? n->pos : 0));
 	}
 	return 0;
 }
