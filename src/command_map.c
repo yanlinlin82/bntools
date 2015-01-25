@@ -4,7 +4,7 @@
 #include "ref_map.h"
 
 #define DEF_TOLERANCE 0.1
-#define DEF_MIN_MATCH 3
+#define DEF_MIN_MATCH 4
 
 static int verbose = 0;
 static double tolerance = DEF_TOLERANCE;
@@ -21,7 +21,7 @@ static void print_usage(void)
 			"   <query>      query molecules/contigs, in tsv/cmap/bnx format\n"
 			"   -v           show verbose message\n"
 			"   -e <FLOAT>   tolerance to compare fragment size [%f]\n"
-			"   -m <INT>     minimal matched fragment [%d]\n"
+			"   -m <INT>     minimal matched labels in query fragment [%d]\n"
 			"   -a           output alignment detail\n"
 			"\n", DEF_TOLERANCE, DEF_MIN_MATCH);
 }
@@ -51,8 +51,8 @@ static void output_item(const struct ref_map *ref, const struct fragment *qry,
 	const char *rname = ref->map.fragments.data[ref->nodes[rindex].chrom].name;
 	size_t rstart = (direct > 0 ? rindex : rindex - count + 1);
 	size_t rend = (direct > 0 ? rindex + count : rindex + 1);
-	size_t qstart = (direct > 0 ? qindex : qindex + count - 1);
-	size_t qend = (direct > 0 ? qindex + count : qindex - 1);
+	size_t qstart = (direct > 0 ? qindex - 1 : qindex + count - 1);
+	size_t qend = (direct > 0 ? qindex + count - 1 : qindex - 1);
 
 	printf("%s\t", qname);
 	printf("%s\t", rname);
@@ -139,9 +139,9 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 			rindex = ref->index[i] - ref->nodes;
 			for (direct = 1; direct >= -1; direct -= 2) {
 				if (qry_item->_nicks.size > 0) {
-					if (direct > 0 && (ref->index[i]->flag | LAST_INTERVAL) != 0) {
+					if (direct > 0 && (ref->index[i]->flag & LAST_INTERVAL) != 0) {
 						continue;
-					} else if (direct < 0 && (ref->index[i]->flag | FIRST_INTERVAL) != 0) {
+					} else if (direct < 0 && (ref->index[i]->flag & FIRST_INTERVAL) != 0) {
 						continue;
 					}
 				}
@@ -151,10 +151,16 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 					qry_size = (p + j)->pos - (p + j - 1)->pos;
 					if (ref_size < qry_size * (1 - tolerance)) break;
 					if (ref_size > qry_size * (1 + tolerance)) break;
-					if (direct > 0 && (ref->index[i]->flag | LAST_INTERVAL)) break;
-					if (direct < 0 && (ref->index[i]->flag | FIRST_INTERVAL)) break;
+					if (direct > 0 && (ref->index[i]->flag & LAST_INTERVAL)) {
+						++j;
+						break;
+					}
+					if (direct < 0 && (ref->index[i]->flag & FIRST_INTERVAL)) {
+						++j;
+						break;
+					}
 				}
-				if (j > min_match) {
+				if (j >= min_match) {
 					output_item(ref, qry_item, rindex, qindex, direct, j);
 					if (max_count < j) {
 						max_count = j;
