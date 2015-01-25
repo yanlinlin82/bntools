@@ -10,10 +10,8 @@
 #define MAX_CHROM_NAME_SIZE 64
 
 enum nick_flag {
-	NICK_LEFT_END     = 1,  /* left end of fragment */
-	NICK_RIGHT_END    = 2,  /* right end of fragment */
-	NICK_PLUS_STRAND  = 4,  /* nick on plus strand */
-	NICK_MINUS_STRAND = 8,  /* nick on minus strand */
+	NICK_PLUS_STRAND  = 1,  /* nick on plus strand */
+	NICK_MINUS_STRAND = 2,  /* nick on minus strand */
 };
 
 enum file_format {  /* of restriction map */
@@ -32,7 +30,7 @@ struct nick {
 struct fragment {  /* molecule, contig or chromosome */
 	char *name;
 	int size;  /* in bp */
-	array(struct nick) nicks;  /* start (at 0) + labels + end (at `size`) */
+	array(struct nick) _nicks;  /* label positions */
 };
 
 struct nick_map {

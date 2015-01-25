@@ -37,10 +37,10 @@ static inline int max(int a, int b) { return (a > b ? a : b); }
 static int align(const struct fragment *fa, const struct fragment *fb)
 {
 	struct node *m;
-	size_t size, i, j, i_start, j_start;
+	size_t size, i, j, delta_i, delta_j;
 	size_t *result_a, *result_b, result_a_count, result_b_count;
-	size_t w = fa->nicks.size;
-	size_t h = fb->nicks.size;
+	size_t w = fa->_nicks.size;
+	size_t h = fb->_nicks.size;
 
 	size = sizeof(struct node) * w * h;
 	m = malloc(size);
@@ -58,22 +58,21 @@ static int align(const struct fragment *fa, const struct fragment *fb)
 		for (i = 1; i < w; ++i) {
 			size_t index = j * w + i;
 
-			for (j_start = j; j_start > 0; --j_start) {
-				int frag_b = fb->nicks.data[j].pos - fb->nicks.data[j_start - 1].pos;
+			for (delta_j = 1; delta_j < j; ++j) {
+				int frag_b = fb->_nicks.data[j].pos - fb->_nicks.data[j - delta_j].pos;
 
-				for (i_start = i; i_start > 0; --i_start) {
-					int frag_a = fa->nicks.data[i].pos - fa->nicks.data[i_start - 1].pos;
+				for (delta_i = 1; delta_i < i; ++i) {
+					int frag_a = fa->_nicks.data[i].pos - fa->_nicks.data[i - delta_i].pos;
 
-					if (j_start + 2 < j || i_start + 2 < i) continue;
-					//if (j_start + 1 < j && i_start + 1 < i) continue;
-					if (frag_b > frag_a * (1 + TOLERANCE)) break;
+					if (delta_i > 1 || delta_j > 1) continue;
+					if (frag_a > frag_b * (1 + TOLERANCE)) break;
 
 					if (abs(frag_a - frag_b) < min(frag_a, frag_b) * TOLERANCE) {
-						int score = m[(j_start - 1) * w + (i_start - 1)].score + 1;
+						int score = m[(j - delta_j) * w + (i - delta_i)].score + 1;
 						if (m[index].score < score) {
 							m[index].score = score;
-							m[index].delta_i = i - i_start + 1;
-							m[index].delta_j = j - j_start + 1;
+							m[index].delta_i = delta_i;
+							m[index].delta_j = delta_j;
 						}
 					}
 				}
@@ -84,21 +83,21 @@ static int align(const struct fragment *fa, const struct fragment *fb)
 	if (verbose > 0) {
 		printf("a (%zd):\n", w);
 		for (i = 1; i < w; ++i) {
-			printf(" [%2zd] %-5d", i, fa->nicks.data[i].pos - fa->nicks.data[i - 1].pos);
+			printf(" [%2zd] %-5d", i, fa->_nicks.data[i].pos - fa->_nicks.data[i - 1].pos);
 			if (i % 5 == 0) printf("\n");
 		}
 		if (i % 5 != 1) printf("\n");
 
 		printf("b (%zd):\n", h);
 		for (i = 1; i < h; ++i) {
-			printf(" [%2zd] %-5d", i, fb->nicks.data[i].pos - fb->nicks.data[i - 1].pos);
+			printf(" [%2zd] %-5d", i, fb->_nicks.data[i].pos - fb->_nicks.data[i - 1].pos);
 			if (i % 5 == 0) printf("\n");
 		}
 		if (i % 5 != 1) printf("\n");
 
 		printf("matrix:\n");
-		for (j = 0; j < h; ++j) {
-			for (i = 0; i < w; ++i) {
+		for (j = 1; j < h; ++j) {
+			for (i = 1; i < w; ++i) {
 				const struct node *p = &m[j * w + i];
 				printf("%2d/%d,%d", p->score, p->delta_i, p->delta_j);
 			}
@@ -142,19 +141,19 @@ static int align(const struct fragment *fa, const struct fragment *fb)
 			if (p->delta_i == 0 && p->delta_j == 0) break;
 
 			if (verbose > 0) {
-				printf("a: %d { ", fa->nicks.data[i].pos - fa->nicks.data[i - p->delta_i].pos);
+				printf("a: %d { ", fa->_nicks.data[i].pos - fa->_nicks.data[i - p->delta_i].pos);
 				for (k = 0; k < p->delta_i; ++k) {
 					size_t index = i - p->delta_i + k;
 					if (k > 0) printf(", ");
-					printf("[%zd] %d", index, fa->nicks.data[index + 1].pos - fa->nicks.data[index].pos);
+					printf("[%zd] %d", index, fa->_nicks.data[index + 1].pos - fa->_nicks.data[index].pos);
 				}
 				printf(" }\t");
 
-				printf("b: %d { ", fb->nicks.data[i].pos - fb->nicks.data[i - p->delta_j].pos);
+				printf("b: %d { ", fb->_nicks.data[i].pos - fb->_nicks.data[i - p->delta_j].pos);
 				for (k = 0; k < p->delta_j; ++k) {
 					size_t index = j - p->delta_j + k;
 					if (k > 0) printf(", ");
-					printf("[%zd] %d", index, fb->nicks.data[index + 1].pos - fb->nicks.data[index].pos);
+					printf("[%zd] %d", index, fb->_nicks.data[index + 1].pos - fb->_nicks.data[index].pos);
 				}
 				printf(" }\n");
 			}

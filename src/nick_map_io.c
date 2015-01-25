@@ -60,6 +60,7 @@ static int load_txt(gzFile file, struct nick_map *map)
 			pos = 0;
 			if (!name[0]) {
 				snprintf(name, sizeof(name), "%s", buf);
+				sum = 0;
 				count = 0;
 				i = 0;
 				f = nick_map_add_fragment(map, name);
@@ -68,26 +69,21 @@ static int load_txt(gzFile file, struct nick_map *map)
 				}
 			} else if (count == 0) {
 				count = atoi(buf);
-				i = 0;
 				if (count <= 0) {
-					name[0] = '\0';
-					count = 0;
+					fprintf(stderr, "Error: Fragment number should be positive!\n");
+					return -EINVAL;
 				}
+				i = 0;
 			} else {
 				assert(f != NULL);
 				value = atof(buf);
 				sum += value;
 				++i;
 				if (i < count) {
-					if ((err = nick_map_add_site(f,
-							to_integer(sum), 0)) != 0) {
+					if ((err = nick_map_add_site(f, to_integer(sum), 0)) != 0) {
 						return err;
 					}
 				} else {
-					if ((err = nick_map_add_site(f,
-							to_integer(sum), NICK_RIGHT_END)) != 0) {
-						return err;
-					}
 					f->size = to_integer(sum);
 					sum = 0;
 					name[0] = '\0';
@@ -150,7 +146,7 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 			} else if (strcmp(strandText, "+/-") == 0) {
 				strand = NICK_PLUS_STRAND | NICK_MINUS_STRAND;
 			} else if (strcmp(strandText, "*") == 0) {
-				strand = NICK_RIGHT_END;
+				strand = 0;
 			} else {
 				fprintf(stderr, "Error: Unknown strand text '%s' on line %lld\n", strandText, lineNo);
 				return -EINVAL;
@@ -162,9 +158,10 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 			}
 			assert(f != NULL);
 
-			nick_map_add_site(f, pos, strand);
-			if (strand == NICK_RIGHT_END) {
+			if (strand == 0) {
 				f->size = pos;
+			} else {
+				nick_map_add_site(f, pos, strand);
 			}
 		}
 	}
@@ -208,9 +205,8 @@ static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 					fprintf(stderr, "Error: Failed in reading float value on line %lld\n", lineNo);
 					return 1;
 				}
-				nick_map_add_site(f, to_integer(value),
-						(*q == '\t' ? 0 : NICK_RIGHT_END));
 				if (*q == '\t') {
+					nick_map_add_site(f, to_integer(value), 0);
 					p = q + 1;
 				} else {
 					assert(*q == '\n');
@@ -270,8 +266,10 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
 			assert(f != NULL);
 
 			assert(labelChannel == 0 || labelChannel == 1);
-			nick_map_add_site(f, position, (labelChannel == 1 ? 0 : NICK_RIGHT_END));
-			if (labelChannel == 0) {
+			if (labelChannel == 1) {
+				nick_map_add_site(f, position, 0);
+			} else {
+				assert(labelChannel == 0);
 				f->size = position;
 			}
 		}
@@ -357,24 +355,25 @@ static void write_command_line(gzFile file)
 
 static int save_as_txt(gzFile file, const struct nick_map *map)
 {
+	const struct fragment *f;
+	const struct nick *n;
 	size_t i, j;
 	for (i = 0; i < map->fragments.size; ++i) {
-		const struct fragment *f = &map->fragments.data[i];
-		assert(f->nicks.size > 1);
-		assert(f->nicks.data[0].pos == 0);
-		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
-		gzprintf(file, "%s %d", f->name, f->nicks.size - 1);
-		for (j = 1; j < f->nicks.size; ++j) {
-			const struct nick *n = f->nicks.data;
-			gzprintf(file, " %d", n[j].pos - (j == 0 ? 0 : n[j - 1].pos));
+		f = &map->fragments.data[i];
+		gzprintf(file, "%s %d", f->name, f->_nicks.size + 1);
+		for (j = 0, n = NULL; j < f->_nicks.size; ++j) {
+			n = &f->_nicks.data[j];
+			gzprintf(file, " %d", n->pos - (j == 0 ? 0 : (n - 1)->pos));
 		}
-		gzprintf(file, "\n");
+		gzprintf(file, " %d\n", f->size - (n ? n->pos : 0));
 	}
 	return 0;
 }
 
 static int save_as_tsv(gzFile file, const struct nick_map *map)
 {
+	const struct fragment *f;
+	const struct nick *n;
 	size_t i, j;
 
 	gzprintf(file, "##fileformat=MAPv0.1\n");
@@ -387,21 +386,21 @@ static int save_as_tsv(gzFile file, const struct nick_map *map)
 	gzprintf(file, "#name\tpos\tflag\tsize\n");
 
 	for (i = 0; i < map->fragments.size; ++i) {
-		const struct fragment *f = &map->fragments.data[i];
-		assert(f->nicks.size > 1);
-		assert(f->nicks.data[0].pos == 0);
-		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
-		for (j = 1; j < f->nicks.size; ++j) {
-			const struct nick *n = f->nicks.data;
+		f = &map->fragments.data[i];
+		for (j = 0, n = NULL; j < f->_nicks.size; ++j) {
+			n = &f->_nicks.data[j];
 			gzprintf(file, "%s\t%d\t%u\t%d\n",
-					f->name, n[j].pos, n[j].flag, n[j].pos - n[j - 1].pos);
+					f->name, n->pos, n[j].flag, n->pos - (j == 0 ? 0 : (n - 1)->pos));
 		}
+		gzprintf(file, "%s\t%d\t%u\t%d\n",
+				f->name, f->size, 0, f->size - (n ? n->pos : 0));
 	}
 	return 0;
 }
 
 static int save_as_bnx(gzFile file, const struct nick_map *map)
 {
+	const struct fragment *f;
 	size_t i, j;
 
 	gzprintf(file, "# BNX File Version: 0.1\n");
@@ -418,21 +417,19 @@ static int save_as_bnx(gzFile file, const struct nick_map *map)
 	gzprintf(file, "#1f\tint\tfloat\n");
 
 	for (i = 0; i < map->fragments.size; ++i) {
-		const struct fragment *f = &map->fragments.data[i];
-		assert(f->nicks.size > 1);
-		assert(f->nicks.data[0].pos == 0);
-		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
-		gzprintf(file, "0\t%s\t%zd\n1", f->name, f->size - 1);
-		for (j = 1; j < f->nicks.size; ++j) {
-			gzprintf(file, "\t%d", f->nicks.data[j].pos);
+		f = &map->fragments.data[i];
+		gzprintf(file, "0\t%s\t%zd\n1", f->name, f->size);
+		for (j = 0; j < f->_nicks.size; ++j) {
+			gzprintf(file, "\t%d", f->_nicks.data[j].pos);
 		}
-		gzprintf(file, "\n");
+		gzprintf(file, "\t%d\n", f->size);
 	}
 	return 0;
 }
 
 static int save_as_cmap(gzFile file, const struct nick_map *map)
 {
+	const struct fragment *f;
 	size_t i, j;
 
 	gzprintf(file, "# CMAP File Version:  0.1\n");
@@ -448,22 +445,15 @@ static int save_as_cmap(gzFile file, const struct nick_map *map)
 	gzprintf(file, "#f int\tfloat\tint\tint\tint\tfloat\tfloat\tint\tint\n");
 
 	for (i = 0; i < map->fragments.size; ++i) {
-		const struct fragment *f = &map->fragments.data[i];
-		assert(f->nicks.size > 1);
-		assert(f->nicks.data[0].pos == 0);
-		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
-		for (j = 1; j < f->nicks.size; ++j) {
+		f = &map->fragments.data[i];
+		for (j = 0; j < f->_nicks.size; ++j) {
 			gzprintf(file, "%s\t%d\t%zd\t%zd\t%d\t%d\t%d\t%d\t%d\n",
-					f->name,                          /* cmapId */
-					f->size,                          /* contigLength */
-					f->nicks.size - 1,                /* numSites */
-					j,                                /* siteId */
-					(j < f->nicks.size - 1 ? 1 : 0),  /* channel */
-					f->nicks.data[j].pos,             /* position */
-					0,                                /* stddev */
-					(j < f->nicks.size - 1 ? 0 : 1),  /* coverage */
-					(j < f->nicks.size - 1 ? 0 : 1)); /* occurance */
+					f->name, f->size, f->_nicks.size, j + 1, 1,
+					f->_nicks.data[j].pos, 0, 0, 0);
 		}
+		gzprintf(file, "%s\t%d\t%zd\t%zd\t%d\t%d\t%d\t%d\t%d\n",
+				f->name, f->size, f->_nicks.size, f->_nicks.size + 1, 0,
+				f->size, 0, 1, 1);
 	}
 	return 0;
 }

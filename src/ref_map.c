@@ -158,10 +158,6 @@ int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_onl
 		if (!gzgets(file, line, sizeof(line))) break;
 		if (line[0] == '>') {
 			if (f) {
-				ret = nick_map_add_site(f, base_count, NICK_RIGHT_END);
-				if (ret) {
-					goto out;
-				}
 				f->size = base_count;
 				if (verbose > 0) {
 					fprintf(stderr, "%d bp\n", base_count);
@@ -211,10 +207,6 @@ int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_onl
 		}
 	}
 	if (f) {
-		ret = nick_map_add_site(f, base_count, NICK_RIGHT_END);
-		if (ret) {
-			goto out;
-		}
 		f->size = base_count;
 		if (verbose > 0) {
 			fprintf(stderr, "%d bp\n", base_count);
@@ -251,7 +243,9 @@ void ref_map_build_index(struct ref_map *ref)
 
 	ref->size = 0;
 	for (i = 0; i < ref->map.fragments.size; ++i) {
-		ref->size += ref->map.fragments.data[i].nicks.size - 1;
+		if (ref->map.fragments.data[i]._nicks.size > 0) {
+			ref->size += ref->map.fragments.data[i]._nicks.size - 1;
+		}
 	}
 
 	ref->nodes = malloc(sizeof(struct node) * ref->size);
@@ -259,14 +253,11 @@ void ref_map_build_index(struct ref_map *ref)
 
 	for (i = 0, k = 0; i < ref->map.fragments.size; ++i) {
 		const struct fragment *f = &ref->map.fragments.data[i];
-		assert(f->nicks.size > 1);
-		assert(f->nicks.data[0].pos == 0);
-		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
-		for (j = 1; j < f->nicks.size; ++j) {
+		for (j = 1; j < f->_nicks.size; ++j) {
 			ref->nodes[k].chrom = i;
-			ref->nodes[k].pos = f->nicks.data[j].pos;
-			ref->nodes[k].size = f->nicks.data[j].pos - f->nicks.data[j - 1].pos;
-			ref->nodes[k].flag = (j == 1 ? FIRST_INTERVAL : 0) | (j + 1 == f->nicks.size ? LAST_INTERVAL : 0);
+			ref->nodes[k].pos = f->_nicks.data[j].pos;
+			ref->nodes[k].size = f->_nicks.data[j].pos - f->_nicks.data[j - 1].pos;
+			ref->nodes[k].flag = (j == 1 ? FIRST_INTERVAL : 0) | (j + 1 == f->_nicks.size ? LAST_INTERVAL : 0);
 			ref->nodes[k].uniq_count = 0;
 			ref->index[k] = &ref->nodes[k];
 			++k;

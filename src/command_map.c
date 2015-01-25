@@ -60,7 +60,7 @@ static void output_item(const struct ref_map *ref, const struct fragment *qry,
 	printf("%s\t", (direct > 0 ? "+" : "-"));
 	printf("%d\t", ref->nodes[rend].pos - ref->nodes[rstart].pos);
 	printf("%zd\t", count);
-	printf("%d\t", qry->nicks.data[qindex + count].pos - qry->nicks.data[qindex].pos);
+	printf("%d\t", qry->_nicks.data[qindex + count].pos - qry->_nicks.data[qindex].pos);
 	printf("%zd\t", count);
 	printf("%zd\t", rstart);
 	printf("%zd\t", rend);
@@ -79,8 +79,8 @@ static void output_item(const struct ref_map *ref, const struct fragment *qry,
 
 		for (i = 0; i < count; ++i) {
 			r[i] = ref->nodes[rstart + i].pos - ref->nodes[rstart + i - 1].pos;
-			q[i] = qry->nicks.data[qstart + direct * i].pos
-					- qry->nicks.data[qstart + direct * i - 1].pos;
+			q[i] = qry->_nicks.data[qstart + direct * i].pos
+					- qry->_nicks.data[qstart + direct * i - 1].pos;
 			w[i] = get_number_width(max(r[i], q[i]));
 		}
 
@@ -119,44 +119,50 @@ static void output_item(const struct ref_map *ref, const struct fragment *qry,
 
 static void map(const struct ref_map *ref, struct fragment *qry_item)
 {
-	size_t i, j, index;
+	size_t rindex, qindex, i, j;
 	int direct;
-	size_t qstart;
 
-	if (qry_item->nicks.size < min_match + 2) {
-		if (verbose) {
+	if (qry_item->_nicks.size < min_match) {
+		if (verbose > 1) {
 			fprintf(stderr, "Warning: Skip '%s' for less than %d labels!\n", qry_item->name, min_match);
 		}
 		return;
 	}
 
-	qstart = 2 /* skip first fragment */;
-	while (qstart + 1 < qry_item->nicks.size) { /* skip last fragment */
-		const struct nick *p = &qry_item->nicks.data[qstart];
+	for (qindex = 1; qindex < qry_item->_nicks.size; ) {
+		const struct nick *p = &qry_item->_nicks.data[qindex];
 		int fragment_size = p->pos - (p - 1)->pos;
-
 		size_t max_count = 0;
 		for (i = 0; i < ref->size; ++i) {
 			if (ref->index[i]->size < fragment_size * (1 - tolerance)) continue;
 			if (ref->index[i]->size > fragment_size * (1 + tolerance)) break;
-
-			index = ref->index[i] - ref->nodes;
-
+			rindex = ref->index[i] - ref->nodes;
 			for (direct = 1; direct >= -1; direct -= 2) {
-				for (j = 1; j < qry_item->nicks.size; ++j) {
-					int fragment_size = (p + j)->pos - (p + j - 1)->pos;
-					if (ref->nodes[index + direct * j].size < fragment_size * (1 - tolerance)) break;
-					if (ref->nodes[index + direct * j].size > fragment_size * (1 + tolerance)) break;
+				if (qry_item->_nicks.size > 0) {
+					if (direct > 0 && (ref->index[i]->flag | LAST_INTERVAL) != 0) {
+						continue;
+					} else if (direct < 0 && (ref->index[i]->flag | FIRST_INTERVAL) != 0) {
+						continue;
+					}
+				}
+				for (j = 1; j < qry_item->_nicks.size; ++j) {
+					int ref_size, qry_size;
+					ref_size = ref->nodes[rindex + direct * j].size;
+					qry_size = (p + j)->pos - (p + j - 1)->pos;
+					if (ref_size < qry_size * (1 - tolerance)) break;
+					if (ref_size > qry_size * (1 + tolerance)) break;
+					if (direct > 0 && (ref->index[i]->flag | LAST_INTERVAL)) break;
+					if (direct < 0 && (ref->index[i]->flag | FIRST_INTERVAL)) break;
 				}
 				if (j > min_match) {
-					output_item(ref, qry_item, index, qstart, direct, j);
+					output_item(ref, qry_item, rindex, qindex, direct, j);
 					if (max_count < j) {
 						max_count = j;
 					}
 				}
 			}
 		}
-		qstart += (max_count > 0 ? max_count : 1);
+		qindex += (max_count > 0 ? max_count : 1);
 	}
 }
 
