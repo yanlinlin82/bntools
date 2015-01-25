@@ -3,10 +3,12 @@
 #include "nick_map.h"
 #include "ref_map.h"
 
-#define TOLERANCE 0.1
-#define MIN_MATCH 4
+#define DEF_TOLERANCE 0.1
+#define DEF_MIN_MATCH 4
 
 static int verbose = 0;
+static double tolerance = DEF_TOLERANCE;
+static int min_match = DEF_MIN_MATCH;
 
 static void print_usage(void)
 {
@@ -14,10 +16,12 @@ static void print_usage(void)
 			"Usage: bntools map [options] <ref> <query>\n"
 			"\n"
 			"Options:\n"
-			"   <ref>     reference genome, in tsv/cmap format\n"
-			"   <query>   query molecules/contigs, in tsv/cmap/bnx format\n"
-			"   -v        show verbose message\n"
-			"\n");
+			"   <ref>        reference genome, in tsv/cmap format\n"
+			"   <query>      query molecules/contigs, in tsv/cmap/bnx format\n"
+			"   -v           show verbose message\n"
+			"   -e <FLOAT>   tolerance to compare fragment size [%f]\n"
+			"   -m <INT>     minimal matched fragment [%d]\n"
+			"\n", DEF_TOLERANCE, DEF_MIN_MATCH);
 }
 
 static void print_header(void)
@@ -40,9 +44,9 @@ static void map(struct ref_map *ref, struct fragment *qry_item)
 	int direct;
 	size_t qstart = 1;
 
-	if (qry_item->nicks.size < MIN_MATCH) {
+	if (qry_item->nicks.size < min_match + 2) {
 		if (verbose) {
-			fprintf(stderr, "Warning: Skip '%s' for less than %d labels!\n", qry_item->name, MIN_MATCH);
+			fprintf(stderr, "Warning: Skip '%s' for less than %d labels!\n", qry_item->name, min_match);
 		}
 		return;
 	}
@@ -55,17 +59,17 @@ static void map(struct ref_map *ref, struct fragment *qry_item)
 	while (qstart + 1 < qry_item->nicks.size) {
 		size_t max_count = 0;
 		for (i = 0; i < ref->size; ++i) {
-			if (ref->index[i]->size < intervals[qstart] * (1 - TOLERANCE)) continue;
-			if (ref->index[i]->size > intervals[qstart] * (1 + TOLERANCE)) break;
+			if (ref->index[i]->size < intervals[qstart] * (1 - tolerance)) continue;
+			if (ref->index[i]->size > intervals[qstart] * (1 + tolerance)) break;
 
 			index = ref->index[i] - ref->nodes;
 
 			for (direct = 1; direct >= -1; direct -= 2) {
 				for (j = 1; j < qry_item->nicks.size; ++j) {
-					if (ref->nodes[index + direct * j].size < intervals[qstart + j] * (1 - TOLERANCE)) break;
-					if (ref->nodes[index + direct * j].size > intervals[qstart + j] * (1 + TOLERANCE)) break;
+					if (ref->nodes[index + direct * j].size < intervals[qstart + j] * (1 - tolerance)) break;
+					if (ref->nodes[index + direct * j].size > intervals[qstart + j] * (1 + tolerance)) break;
 				}
-				if (j >= MIN_MATCH) {
+				if (j >= min_match) {
 					int size = ref->nodes[index + direct * j].pos - ref->nodes[index].pos;
 					if (size < 0) size = -size;
 
@@ -87,10 +91,16 @@ static void map(struct ref_map *ref, struct fragment *qry_item)
 static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "v")) != -1) {
+	while ((c = getopt(argc, argv, "ve:m:")) != -1) {
 		switch (c) {
 		case 'v':
 			++verbose;
+			break;
+		case 'e':
+			tolerance = atof(optarg);
+			break;
+		case 'm':
+			min_match = atoi(optarg);
 			break;
 		default:
 			return 1;
