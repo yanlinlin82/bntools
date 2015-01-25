@@ -77,10 +77,9 @@ int ref_map_set_enzyme(struct ref_map *ref, const char *enzyme, const char *rec_
 static int seq_match(const char *ref, const char *query, size_t len, int strand)
 {
 	size_t i;
-	assert(strand == STRAND_PLUS || strand == STRAND_MINUS);
 	for (i = 0; i < len; ++i) {
 		char r = ref[i];
-		char q = (strand == STRAND_PLUS ? query[i] : base_to_comp(query[len - i - 1]));
+		char q = (strand == 0 ? query[i] : base_to_comp(query[len - i - 1]));
 		if ((r & q) != r) {
 			return 0;
 		}
@@ -112,10 +111,13 @@ static int process_line(struct ref_map *ref, struct fragment *f,
 		if (buf->pos < ref->rec_seq_size) {
 			continue;
 		}
-		for (strand = STRAND_PLUS, matched = 0; strand <= STRAND_MINUS; ++strand) {
-			if (matched || seq_match(buf->data + buf->pos - ref->rec_seq_size, ref->rec_bases, ref->rec_seq_size, strand)) {
-				int site_pos = base_count - (strand == STRAND_MINUS ? ref->nick_offset : (ref->rec_seq_size - ref->nick_offset));
-				if (nick_map_add_site(f, site_pos, strand)) {
+		for (strand = 0, matched = 0; strand < 2; ++strand) {
+			if (matched || seq_match(buf->data + buf->pos - ref->rec_seq_size,
+					ref->rec_bases, ref->rec_seq_size, strand)) {
+				int site_pos = base_count - (strand == 1 ? ref->nick_offset
+						: (ref->rec_seq_size - ref->nick_offset));
+				if (nick_map_add_site(f, site_pos,
+						(strand == 0 ? NICK_PLUS_STRAND : NICK_MINUS_STRAND))) {
 					return -ENOMEM;
 				}
 				matched = ref->palindrome;
@@ -156,7 +158,7 @@ int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_onl
 		if (!gzgets(file, line, sizeof(line))) break;
 		if (line[0] == '>') {
 			if (f) {
-				ret = nick_map_add_site(f, base_count, STRAND_END);
+				ret = nick_map_add_site(f, base_count, NICK_RIGHT_END);
 				if (ret) {
 					goto out;
 				}
@@ -209,7 +211,7 @@ int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_onl
 		}
 	}
 	if (f) {
-		ret = nick_map_add_site(f, base_count, STRAND_END);
+		ret = nick_map_add_site(f, base_count, NICK_RIGHT_END);
 		if (ret) {
 			goto out;
 		}

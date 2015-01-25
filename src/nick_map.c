@@ -52,19 +52,19 @@ struct fragment *nick_map_add_fragment(struct nick_map *map, const char *name)
 		free(f->name);
 		return NULL;
 	}
-	f->nicks.data[0].strand = STRAND_END;
+	f->nicks.data[0].flag = NICK_LEFT_END;
 	++f->nicks.size;
 	++map->fragments.size;
 	return f;
 }
 
-int nick_map_add_site(struct fragment *f, int pos, int strand)
+int nick_map_add_site(struct fragment *f, int pos, unsigned int flag)
 {
 	size_t i, j;
 
 	for (i = f->nicks.size; i > 0; --i) {
 		if (f->nicks.data[i - 1].pos == pos) {
-			f->nicks.data[i - 1].strand |= strand;
+			f->nicks.data[i - 1].flag |= flag;
 			return 0;
 		} else if (f->nicks.data[i - 1].pos < pos) {
 			break;
@@ -77,7 +77,7 @@ int nick_map_add_site(struct fragment *f, int pos, int strand)
 		memcpy(&f->nicks.data[j], &f->nicks.data[j - 1], sizeof(struct nick));
 	}
 	f->nicks.data[i].pos = pos;
-	f->nicks.data[i].strand = strand;
+	f->nicks.data[i].flag = flag;
 	++f->nicks.size;
 	return 0;
 }

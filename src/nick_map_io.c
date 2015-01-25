@@ -80,12 +80,12 @@ static int load_txt(gzFile file, struct nick_map *map)
 				++i;
 				if (i < count) {
 					if ((err = nick_map_add_site(f,
-							to_integer(sum), STRAND_UNKNOWN)) != 0) {
+							to_integer(sum), 0)) != 0) {
 						return err;
 					}
 				} else {
 					if ((err = nick_map_add_site(f,
-							to_integer(sum), STRAND_END)) != 0) {
+							to_integer(sum), NICK_RIGHT_END)) != 0) {
 						return err;
 					}
 					f->size = to_integer(sum);
@@ -142,15 +142,15 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 			}
 
 			if (strcmp(strandText, "?") == 0) {
-				strand = STRAND_UNKNOWN;
+				strand = 0;
 			} else if (strcmp(strandText, "+") == 0) {
-				strand = STRAND_PLUS;
+				strand = NICK_PLUS_STRAND;
 			} else if (strcmp(strandText, "-") == 0) {
-				strand = STRAND_MINUS;
+				strand = NICK_MINUS_STRAND;
 			} else if (strcmp(strandText, "+/-") == 0) {
-				strand = STRAND_BOTH;
+				strand = NICK_PLUS_STRAND | NICK_MINUS_STRAND;
 			} else if (strcmp(strandText, "*") == 0) {
-				strand = STRAND_END;
+				strand = NICK_RIGHT_END;
 			} else {
 				fprintf(stderr, "Error: Unknown strand text '%s' on line %lld\n", strandText, lineNo);
 				return -EINVAL;
@@ -163,7 +163,7 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 			assert(f != NULL);
 
 			nick_map_add_site(f, pos, strand);
-			if (strand == STRAND_END) {
+			if (strand == NICK_RIGHT_END) {
 				f->size = pos;
 			}
 		}
@@ -209,7 +209,7 @@ static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 					return 1;
 				}
 				nick_map_add_site(f, to_integer(value),
-						(*q == '\t' ? STRAND_UNKNOWN : STRAND_END));
+						(*q == '\t' ? 0 : NICK_RIGHT_END));
 				if (*q == '\t') {
 					p = q + 1;
 				} else {
@@ -270,7 +270,7 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
 			assert(f != NULL);
 
 			assert(labelChannel == 0 || labelChannel == 1);
-			nick_map_add_site(f, position, (labelChannel == 1 ? 0 : STRAND_END));
+			nick_map_add_site(f, position, (labelChannel == 1 ? 0 : NICK_RIGHT_END));
 			if (labelChannel == 0) {
 				f->size = position;
 			}
@@ -375,7 +375,6 @@ static int save_as_txt(gzFile file, const struct nick_map *map)
 
 static int save_as_tsv(gzFile file, const struct nick_map *map)
 {
-	static const char * const STRAND[] = { "?", "+", "-", "+/-", "*" };
 	size_t i, j;
 
 	gzprintf(file, "##fileformat=MAPv0.1\n");
@@ -385,7 +384,7 @@ static int save_as_tsv(gzFile file, const struct nick_map *map)
 	gzprintf(file, "##program=bntools\n");
 	gzprintf(file, "##programversion="VERSION"\n");
 	write_command_line(file);
-	gzprintf(file, "#name\tpos\tstrand\tsize\n");
+	gzprintf(file, "#name\tpos\tflag\tsize\n");
 
 	for (i = 0; i < map->fragments.size; ++i) {
 		const struct fragment *f = &map->fragments.data[i];
@@ -394,8 +393,8 @@ static int save_as_tsv(gzFile file, const struct nick_map *map)
 		assert(f->nicks.data[f->nicks.size - 1].pos == f->size);
 		for (j = 1; j < f->nicks.size; ++j) {
 			const struct nick *n = f->nicks.data;
-			gzprintf(file, "%s\t%d\t%s\t%d\n",
-					f->name, n[j].pos, STRAND[n[j].strand], n[j].pos - n[j - 1].pos);
+			gzprintf(file, "%s\t%d\t%u\t%d\n",
+					f->name, n[j].pos, n[j].flag, n[j].pos - n[j - 1].pos);
 		}
 	}
 	return 0;
