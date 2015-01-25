@@ -221,14 +221,13 @@ static int sort_by_size(const void *a, const void *b)
 {
 	const struct node *pa = *(const struct node * const *)a;
 	const struct node *pb = *(const struct node * const *)b;
-	for (;;) {
-		if (pa->size < pb->size) return -1;
-		if (pa->size > pb->size) return -1;
-		if ((pa->flag & LAST_INTERVAL) && (pb->flag & LAST_INTERVAL)) return 0;
-		if (pa->flag & LAST_INTERVAL) return -1;
-		if (pb->flag & LAST_INTERVAL) return 1;
-		++pa;
-		++pb;
+	size_t i;
+	for (i = 0;; ++i) {
+		if (pa[i].size < pb[i].size) return -1;
+		if (pa[i].size > pb[i].size) return 1;
+		if ((pa[i].flag & LAST_INTERVAL) && (pb[i].flag & LAST_INTERVAL)) return 0;
+		if (pa[i].flag & LAST_INTERVAL) return -1;
+		if (pb[i].flag & LAST_INTERVAL) return 1;
 	}
 	return 0;
 }
