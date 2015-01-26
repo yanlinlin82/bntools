@@ -186,7 +186,7 @@ int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_onl
 				char *p = line + 1;
 				while (*p && !isspace(*p)) ++p;
 				*p = '\0';
-				snprintf(name, sizeof(name), line + 1);
+				snprintf(name, sizeof(name), "%s", line + 1);
 			}
 			if (verbose > 0) {
 				fprintf(stderr, "Loading fragment '%s' ... ", name);
