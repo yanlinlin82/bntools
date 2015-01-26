@@ -22,6 +22,41 @@ int parse_format_text(const char *s)
 	}
 }
 
+int load_name_list(struct name_list *name_list, const char *filename)
+{
+	FILE *fp = fopen(filename, "r");
+	if (!fp) {
+		return -EINVAL;
+	}
+	while (!feof(fp)) {
+		char buf[256];
+		size_t len;
+		if (!fgets(buf, sizeof(buf), fp)) break;
+		if (buf[0] == '#') continue;
+		len = strlen(buf);
+		if (len > 0 && buf[len - 1] == '\n') {
+			buf[len - 1] = '\0';
+		}
+		if (array_reserve(name_list->names, name_list->names.size + 1)) {
+			fclose(fp);
+			return -ENOMEM;
+		}
+		name_list->names.data[name_list->names.size] = strdup(buf);
+		++name_list->names.size;
+	}
+	fclose(fp);
+	return 0;
+}
+
+void free_name_list(struct name_list *name_list)
+{
+	size_t i;
+	for (i = 0; i < name_list->names.size; ++i) {
+		free(name_list->names.data[i]);
+	}
+	array_free(name_list->names);
+}
+
 static inline int to_integer(double x) { return (int)(x + .5); }
 
 static inline int string_begins_as(const char *s, const char *prefix)
@@ -37,7 +72,18 @@ static inline int skip_to_next_line(gzFile file, char *buf, size_t bufsize)
 	return 0;
 }
 
-static int load_txt(gzFile file, struct nick_map *map)
+static int name_list_has(const struct name_list *name_list, const char *name)
+{
+	size_t i;
+	for (i = 0; i < name_list->names.size; ++i) {
+		if (strcmp(name, name_list->names.data[i]) == 0) {
+			return 1;
+		}
+	}
+	return 0;
+}
+
+static int load_txt(gzFile file, struct nick_map *map, const struct name_list *name_list)
 {
 	/* format as: id, #intervals, size[1], ..., size[#intervals] */
 	struct fragment *f = NULL;
@@ -47,6 +93,7 @@ static int load_txt(gzFile file, struct nick_map *map)
 	int count = 0, i = 0, err, c;
 	char buf[256];
 	size_t pos = 0;
+	int skip = 0;
 
 	while ((c = gzgetc(file)) != EOF) {
 		if (!isspace(c)) {
@@ -63,9 +110,14 @@ static int load_txt(gzFile file, struct nick_map *map)
 				sum = 0;
 				count = 0;
 				i = 0;
-				f = nick_map_add_fragment(map, name);
-				if (!f) {
-					return -ENOMEM;
+				if (name_list) {
+					skip = !name_list_has(name_list, name);
+				}
+				if (!skip) {
+					f = nick_map_add_fragment(map, name);
+					if (!f) {
+						return -ENOMEM;
+					}
 				}
 			} else if (count == 0) {
 				count = atoi(buf);
@@ -75,16 +127,22 @@ static int load_txt(gzFile file, struct nick_map *map)
 				}
 				i = 0;
 			} else {
-				assert(f != NULL);
+				if (!skip) {
+					assert(f != NULL);
+				}
 				value = atof(buf);
 				sum += value;
 				++i;
 				if (i < count) {
-					if ((err = nick_map_add_site(f, to_integer(sum), 0)) != 0) {
-						return err;
+					if (!skip) {
+						if ((err = nick_map_add_site(f, to_integer(sum), 0)) != 0) {
+							return err;
+						}
 					}
 				} else {
-					f->size = to_integer(sum);
+					if (!skip) {
+						f->size = to_integer(sum);
+					}
 					sum = 0;
 					name[0] = '\0';
 					count = 0;
@@ -100,7 +158,7 @@ static int load_txt(gzFile file, struct nick_map *map)
 	return 0;
 }
 
-static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
+static int load_tsv(gzFile file, long long lineNo, struct nick_map *map, const struct name_list *name_list)
 {
 	char buf[256];
 	struct fragment *f = NULL;
@@ -136,6 +194,11 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 				fprintf(stderr, "Error: Failed to parse data on line %lld\n", lineNo);
 				return -EINVAL;
 			}
+			if (name_list) {
+				if (!name_list_has(name_list, name)) {
+					continue;
+				}
+			}
 
 			if (strcmp(strandText, "?") == 0) {
 				strand = 0;
@@ -168,13 +231,14 @@ static int load_tsv(gzFile file, long long lineNo, struct nick_map *map)
 	return 0;
 }
 
-static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
+static int load_bnx(gzFile file, long long lineNo, struct nick_map *map, const struct name_list *name_list)
 {
 	char buf[256];
 	char molecule_id[64] = "";
 	double length = 0;
 	int molecule_length;
 	struct fragment *f = NULL;
+	int skip = 0;
 	while (!gzeof(file)) {
 		++lineNo;
 		if (!gzgets(file, buf, sizeof(buf))) break;
@@ -184,9 +248,14 @@ static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 				fprintf(stderr, "Error: Invalid format on line %lld\n", lineNo);
 				return 1;
 			}
-			molecule_length = to_integer(length);
-			f = nick_map_add_fragment(map, molecule_id);
-			f->size = molecule_length;
+			if (name_list) {
+				skip = !name_list_has(name_list, molecule_id);
+			}
+			if (!skip) {
+				molecule_length = to_integer(length);
+				f = nick_map_add_fragment(map, molecule_id);
+				f->size = molecule_length;
+			}
 			if (skip_to_next_line(file, buf, sizeof(buf))) break;
 		} else if (memcmp(buf, "1\t", 2) == 0) { /* label positions */
 			char *p = buf + 2;
@@ -206,11 +275,15 @@ static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 					return 1;
 				}
 				if (*q == '\t') {
-					nick_map_add_site(f, to_integer(value), 0);
+					if (!skip) {
+						nick_map_add_site(f, to_integer(value), 0);
+					}
 					p = q + 1;
 				} else {
 					assert(*q == '\n');
-					f->size = to_integer(value);
+					if (!skip) {
+						f->size = to_integer(value);
+					}
 					break;
 				}
 			}
@@ -221,7 +294,7 @@ static int load_bnx(gzFile file, long long lineNo, struct nick_map *map)
 	return 0;
 }
 
-static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
+static int load_cmap(gzFile file, long long lineNo, struct nick_map *map, const struct name_list *name_list)
 {
 	char buf[256];
 	struct fragment *f = NULL;
@@ -259,6 +332,11 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
 				fprintf(stderr, "Error: Failed to parse data on line %lld\n", lineNo);
 				return -EINVAL;
 			}
+			if (name_list) {
+				if (!name_list_has(name_list, mapId)) {
+					continue;
+				}
+			}
 
 			if (strcmp(lastMapId, mapId) != 0) {
 				f = nick_map_add_fragment(map, mapId);
@@ -277,7 +355,7 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map)
 	return 0;
 }
 
-int nick_map_load(struct nick_map *map, const char *filename)
+int nick_map_load(struct nick_map *map, const char *filename, const struct name_list *name_list)
 {
 	long long lineNo = 0;
 	char buf[256];
@@ -299,7 +377,7 @@ int nick_map_load(struct nick_map *map, const char *filename)
 	c = gzgetc(file);
 	gzungetc(c, file);
 	if (c != '#') {  /* no any comment line, try as the simple format */
-		ret = load_txt(file, map);
+		ret = load_txt(file, map, name_list);
 	} else {
 		while (!gzeof(file)) {
 			++lineNo;
@@ -318,11 +396,11 @@ int nick_map_load(struct nick_map *map, const char *filename)
 			if (skip_to_next_line(file, buf, sizeof(buf))) break;
 		}
 		if (format == 1) {
-			ret = load_bnx(file, lineNo, map);
+			ret = load_bnx(file, lineNo, map, name_list);
 		} else if (format == 2) {
-			ret = load_cmap(file, lineNo, map);
+			ret = load_cmap(file, lineNo, map, name_list);
 		} else if (format == 3) {
-			ret = load_tsv(file, lineNo, map);
+			ret = load_tsv(file, lineNo, map, name_list);
 		} else {
 			fprintf(stderr, "Error: Unknown input map format!\n");
 			ret = 1;

@@ -226,7 +226,7 @@ int align_main(int argc, char * const argv[])
 	}
 
 	nick_map_init(&map);
-	if (nick_map_load(&map, argv[optind])) {
+	if (nick_map_load(&map, argv[optind], NULL)) {
 		nick_map_free(&map);
 		return 1;
 	}
@@ -236,7 +236,7 @@ int align_main(int argc, char * const argv[])
 	} else {
 		struct nick_map map2;
 		nick_map_init(&map2);
-		if (nick_map_load(&map2, argv[optind + 1])) {
+		if (nick_map_load(&map2, argv[optind + 1], NULL)) {
 			nick_map_free(&map2);
 			nick_map_free(&map);
 			return 1;
