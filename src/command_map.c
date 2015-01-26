@@ -209,13 +209,13 @@ int map_main(int argc, char * const argv[])
 	}
 
 	ref_map_init(&ref);
-	if (nick_map_load(&ref.map, argv[optind], NULL)) {
+	if (nick_map_load(&ref.map, argv[optind])) {
 		return 1;
 	}
 	ref_map_build_index(&ref);
 
 	nick_map_init(&qry);
-	if (nick_map_load(&qry, argv[optind + 1], NULL)) {
+	if (nick_map_load(&qry, argv[optind + 1])) {
 		ref_map_free(&ref);
 		return 1;
 	}

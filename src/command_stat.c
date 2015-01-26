@@ -44,7 +44,7 @@ int stat_main(int argc, char * const argv[])
 	}
 
 	ref_map_init(&ref);
-	if (nick_map_load(&ref.map, argv[optind], NULL)) {
+	if (nick_map_load(&ref.map, argv[optind])) {
 		return 1;
 	}
 	ref_map_build_index(&ref);

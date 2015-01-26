@@ -355,7 +355,12 @@ static int load_cmap(gzFile file, long long lineNo, struct nick_map *map, const 
 	return 0;
 }
 
-int nick_map_load(struct nick_map *map, const char *filename, const struct name_list *name_list)
+int nick_map_load(struct nick_map *map, const char *filename)
+{
+	return nick_map_load_ex(map, filename, NULL);
+}
+
+int nick_map_load_ex(struct nick_map *map, const char *filename, const struct name_list *name_list)
 {
 	long long lineNo = 0;
 	char buf[256];

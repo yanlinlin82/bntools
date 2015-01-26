@@ -81,7 +81,7 @@ int view_main(int argc, char * const argv[])
 	nick_map_init(&map);
 
 	for (i = optind; i < argc; ++i) {
-		if (nick_map_load(&map, argv[i],
+		if (nick_map_load_ex(&map, argv[i],
 				(name_list.names.size ? &name_list : NULL))) {
 			nick_map_free(&map);
 			return 1;

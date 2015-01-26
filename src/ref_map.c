@@ -48,7 +48,7 @@ int ref_map_set_enzyme(struct ref_map *ref, const char *enzyme, const char *rec_
 			rec_bases[rec_seq_size++] = c;
 		}
 	}
-	for (i = 0; i < rec_seq_size / 2; ++i) {
+	for (i = 0, palindrome = 1; i < rec_seq_size / 2; ++i) {
 		if (rec_bases[i] != base_to_comp(rec_bases[rec_seq_size - i - 1])) {
 			palindrome = 0;
 			break;
