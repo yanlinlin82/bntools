@@ -45,68 +45,68 @@ static int get_number_width(int x)
 }
 
 static void output_item(const struct ref_map *ref, const struct fragment *qry,
-		size_t rindex, size_t qindex, int direct, size_t frag_count)
+		size_t rindex, size_t qindex, int direct, size_t matched_nicks)
 {
-	const struct ref_node *p = &ref->nodes[rindex];
+	const struct ref_node *p = &ref->node[rindex];
 	const char *qname = qry->name;
 	const char *rname = ref->map.fragments.data[p->chrom].name;
-	size_t rstart = (direct > 0 ? rindex : rindex - frag_count + 1);
-	size_t rend = (direct > 0 ? rindex + frag_count : rindex);
-	size_t qstart = (direct > 0 ? qindex : qindex + frag_count - 1);
-	size_t qend = (direct > 0 ? qindex + frag_count - 1: qindex - 1);
+	size_t rstart = (direct > 0 ? rindex : rindex - matched_nicks + 1);
+	size_t rend = (direct > 0 ? rindex + matched_nicks : rindex + 1);
+	size_t qstart = (direct > 0 ? qindex : qindex + matched_nicks - 1);
+	size_t qend = (direct > 0 ? qindex + matched_nicks: qindex - 1);
 
 	printf("%s\t", qname);
 	printf("%s\t", rname);
-	printf("%d\t", ref->nodes[rstart].pos);
+	printf("%d\t", ref->node[rstart].pos);
 	printf("%s\t", (direct > 0 ? "+" : "-"));
-	printf("%d\t", ref->nodes[rend].pos - ref->nodes[rstart].pos);
-	printf("%zd\t", frag_count + 1);
-	printf("%d\t", qry->nicks.data[qindex + frag_count - 1].pos - qry->nicks.data[qindex].pos);
-	printf("%zd\t", frag_count + 1);
-	printf("%zd\t", ref->nodes[rstart].label);
-	printf("%zd\t", ref->nodes[rend].label);
+	printf("%d\t", ref->node[rend].pos - ref->node[rstart].pos);
+	printf("%zd\t", matched_nicks + 1);
+	printf("%d\t", qry->nicks.data[qindex + matched_nicks - 1].pos - qry->nicks.data[qindex].pos);
+	printf("%zd\t", matched_nicks + 1);
+	printf("%zd\t", ref->node[rstart].label);
+	printf("%zd\t", ref->node[rend].label);
 	printf("%zd\t", qstart + 1);
 	printf("%zd\n", qend + 1);
 
 	if (output_align) {
 		int name_width, pos_width;
 		size_t i;
-		int *q = malloc(sizeof(int) * (frag_count + 1));
-		int *r = malloc(sizeof(int) * (frag_count + 1));
-		int *w = malloc(sizeof(int) * (frag_count + 1));
+		int *q = malloc(sizeof(int) * (matched_nicks + 1));
+		int *r = malloc(sizeof(int) * (matched_nicks + 1));
+		int *w = malloc(sizeof(int) * (matched_nicks + 1));
 
 		name_width = (int)max(strlen(rname), strlen(qname));
 		pos_width = get_number_width(max(max(rstart, rend), max(qstart, qend)));
 
-		for (i = 0; i < frag_count + 1; ++i) {
-			r[i] = ref->nodes[rstart + i + 1].pos - ref->nodes[rstart + i].pos;
+		for (i = 0; i < matched_nicks + 1; ++i) {
+			r[i] = ref->node[rstart + i + 1].pos - ref->node[rstart + i].pos;
 			q[i] = qry->nicks.data[qstart + direct * i + 1].pos
 					- qry->nicks.data[qstart + direct * i].pos;
 			w[i] = get_number_width(max(r[i], q[i]));
 		}
 
 		printf(" %*s: ", name_width, rname);
-		for (i = 0; i < frag_count + 1; ++i) {
-			printf("%*zd", pos_width, ref->nodes[rstart + i].label);
-			if (i < frag_count) {
+		for (i = 0; i < matched_nicks + 1; ++i) {
+			printf("%*zd", pos_width, ref->node[rstart + i].label);
+			if (i < matched_nicks) {
 				printf(" -(%*d)- ", w[i], r[i]);
 			}
 		}
 		printf("\n");
 
 		printf(" %*s  ", name_width, "");
-		for (i = 0; i < frag_count + 1; ++i) {
+		for (i = 0; i < matched_nicks + 1; ++i) {
 			printf("%*c", pos_width, '|');
-			if (i < frag_count) {
+			if (i < matched_nicks) {
 				printf("  (%*d)  ", w[i], q[i] - r[i]);
 			}
 		}
 		printf("\n");
 
 		printf(" %*s: ", name_width, qname);
-		for (i = 0; i < frag_count + 1; ++i) {
+		for (i = 0; i < matched_nicks + 1; ++i) {
 			printf("%*zd", pos_width, qstart + direct * i + 1);
-			if (i < frag_count) {
+			if (i < matched_nicks) {
 				printf(" -(%*d)- ", w[i], q[i]);
 			}
 		}
@@ -133,10 +133,10 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 		const struct nick *p = &qry_item->nicks.data[qindex];
 		int fragment_size = (p + 1)->pos - p->pos;
 		size_t max_count = 0;
-		for (i = 0; i < ref->size * 2; ++i) {
+		for (i = 0; i < ref->index_count; ++i) {
 			const struct ref_index *r = &ref->index[i];
 			const struct ref_node *n = r->node;
-			rindex = n - ref->nodes;
+			rindex = n - ref->node;
 			if (n->size < fragment_size * (1 - tolerance)) continue;
 			if (n->size > fragment_size * (1 + tolerance)) break;
 
@@ -159,7 +159,7 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 					}
 				}
 			}
-			if (j >= min_match) {
+			if (j >= min_match) { /* here j equals to matched nick number */
 				output_item(ref, qry_item, rindex, qindex, r->direct, j);
 				if (max_count < j) {
 					max_count = j;

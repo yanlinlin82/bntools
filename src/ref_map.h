@@ -31,8 +31,9 @@ struct ref_map {
 	int nick_offset;
 	int palindrome;
 
-	size_t size;
-	struct ref_node *nodes;
+	size_t node_count;
+	struct ref_node *node;
+	size_t index_count;
 	struct ref_index *index;
 };
 
