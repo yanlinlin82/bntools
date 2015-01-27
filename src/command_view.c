@@ -14,6 +14,7 @@ static int verbose = 0;
 static char output_file[PATH_MAX] = DEF_OUTPUT;
 static int format = FORMAT_TSV;
 static char name_list_file[PATH_MAX] = "";
+static int counting = 0;
 
 static void print_usage(void)
 {
@@ -25,6 +26,7 @@ static void print_usage(void)
 			"   -o FILE         output file ["DEF_OUTPUT"]\n"
 			"   -f STR          output format, tsv/cmap/bnx/txt ["DEF_FORMAT"]\n"
 			"   -s FILE         select fragment by name, listed in lines\n"
+			"   -c              count fragments and nicks\n"
 			"   -v              show verbose message\n"
 			"\n");
 }
@@ -32,7 +34,7 @@ static void print_usage(void)
 static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "o:f:s:v")) != -1) {
+	while ((c = getopt(argc, argv, "o:f:s:cv")) != -1) {
 		switch (c) {
 		case 'o':
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
@@ -46,6 +48,9 @@ static int check_options(int argc, char * const argv[])
 			break;
 		case 's':
 			snprintf(name_list_file, sizeof(name_list_file), "%s", optarg);
+			break;
+		case 'c':
+			counting = 1;
 			break;
 		case 'v':
 			++verbose;
@@ -88,7 +93,15 @@ int view_main(int argc, char * const argv[])
 		}
 	}
 
-	nick_map_save(&map, output_file, format);
+	if (counting) {
+		size_t i, count;
+		for (i = 0, count = 0; i < map.fragments.size; ++i) {
+			count += map.fragments.data[i].nicks.size;
+		}
+		fprintf(stdout, "%zd\t%zd\n", map.fragments.size, count);
+	} else {
+		nick_map_save(&map, output_file, format);
+	}
 	nick_map_free(&map);
 	return 0;
 }
