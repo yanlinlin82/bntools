@@ -8,6 +8,7 @@
 #include <limits.h>
 #include "base_map.h"
 #include "ref_map.h"
+#include "bn_file.h"
 
 #define DEF_OUTPUT "stdout"
 #define DEF_FORMAT "tsv"

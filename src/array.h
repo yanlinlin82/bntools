@@ -2,6 +2,7 @@
 #define __ARRAY_H__
 
 #include <stdlib.h>
+#include <errno.h>
 
 #define array(type) struct { size_t capacity, size; type *data; }
 typedef array(void) array_t;

@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include "nick_map.h"
 #include "ref_map.h"
+#include "bn_file.h"
 
 #define DEF_TOLERANCE 0.1
 #define DEF_MIN_MATCH 4

@@ -2,6 +2,7 @@
 #include <unistd.h>
 #include "nick_map.h"
 #include "ref_map.h"
+#include "bn_file.h"
 
 static int verbose = 0;
 

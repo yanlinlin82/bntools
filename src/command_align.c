@@ -6,6 +6,7 @@
 #include <getopt.h>
 #include <limits.h>
 #include "nick_map.h"
+#include "bn_file.h"
 
 #define DEF_OUTPUT "stdout"
 

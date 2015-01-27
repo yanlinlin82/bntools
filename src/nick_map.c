@@ -14,7 +14,6 @@ void nick_map_free(struct nick_map *map)
 {
 	size_t i;
 	for (i = 0; i < map->fragments.size; ++i) {
-		free(map->fragments.data[i].name);
 		array_free(map->fragments.data[i].nicks);
 	}
 	array_free(map->fragments);
@@ -34,21 +33,17 @@ struct fragment *nick_map_add_fragment(struct nick_map *map, const char *name)
 	size_t i;
 
 	for (i = 0; i < map->fragments.size; ++i) {
-		if (strcmp(map->fragments.data[i].name, name) == 0) {
+		if (strncmp(map->fragments.data[i].name, name, MAX_FRAGMENT_NAME_SIZE) == 0) {
 			return &map->fragments.data[i];
 		}
 	}
-	if (array_reserve(map->fragments, i + 1)) {
+	if (array_reserve(map->fragments, map->fragments.size + 1)) {
 		return NULL;
 	}
 
-	f = &map->fragments.data[i];
+	f = &map->fragments.data[map->fragments.size++];
 	memset(f, 0, sizeof(struct fragment));
-	f->name = strdup(name);
-	if (!f->name) {
-		return NULL;
-	}
-	++map->fragments.size;
+	snprintf(f->name, sizeof(f->name), "%s", name);
 	return f;
 }
 

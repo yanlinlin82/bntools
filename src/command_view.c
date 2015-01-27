@@ -5,6 +5,7 @@
 #include <getopt.h>
 #include <limits.h>
 #include "nick_map.h"
+#include "bn_file.h"
 
 #define DEF_OUTPUT "stdout"
 #define DEF_FORMAT "tsv"
@@ -68,12 +69,34 @@ static int check_options(int argc, char * const argv[])
 
 int view_main(int argc, char * const argv[])
 {
+	struct bn_file *fp;
 	struct nick_map map;
+	struct fragment fragment = { };
 	struct name_list name_list = { };
-	int i;
+	size_t fragment_count = 0;
+	size_t nick_count = 0;
+	gzFile file;
+	int i, ret = 0, save_into_map;
 
 	if (check_options(argc, argv)) {
 		return 1;
+	}
+
+	nick_map_init(&map);
+
+	if (counting) {
+		save_into_map = 0;
+		file = NULL;
+	} else if (format == FORMAT_TXT || format == FORMAT_TSV) {
+		save_into_map = 0;
+		file = open_gzfile_write(output_file);
+		if (!file) {
+			return 1;
+		}
+		save_header(file, &map, format);
+	} else {
+		save_into_map = 1;
+		file = NULL;
 	}
 
 	if (name_list_file[0]) {
@@ -83,25 +106,43 @@ int view_main(int argc, char * const argv[])
 		}
 	}
 
-	nick_map_init(&map);
-
 	for (i = optind; i < argc; ++i) {
-		if (nick_map_load_ex(&map, argv[i],
-				(name_list.names.size ? &name_list : NULL))) {
-			nick_map_free(&map);
-			return 1;
+		fp = bn_open(argv[i]);
+		if (!fp) {
+			ret = 1;
+			goto out;
 		}
+		while (bn_read(fp, &fragment) == 0) {
+			if (name_list_file[0]) {
+				if (!name_list_has(&name_list, fragment.name)) {
+					continue;
+				}
+			}
+			if (counting) {
+				++fragment_count;
+				nick_count += fragment.nicks.size;
+			} else if (save_into_map) {
+				if (array_reserve(map.fragments, map.fragments.size + 1)) {
+					nick_map_free(&map);
+					return -ENOMEM;
+				}
+				memcpy(&map.fragments.data[map.fragments.size++],
+						&fragment, sizeof(struct fragment));
+			} else {
+				save_fragment(file, &fragment, format);
+			}
+		}
+		bn_close(fp);
 	}
 
 	if (counting) {
-		size_t i, count;
-		for (i = 0, count = 0; i < map.fragments.size; ++i) {
-			count += map.fragments.data[i].nicks.size;
-		}
-		fprintf(stdout, "%zd\t%zd\n", map.fragments.size, count);
-	} else {
+		fprintf(stdout, "%zd\t%zd\n", fragment_count, nick_count);
+	} else if (save_into_map) {
 		nick_map_save(&map, output_file, format);
+	} else {
+		gzclose(file);
 	}
+out:
 	nick_map_free(&map);
-	return 0;
+	return ret;
 }
