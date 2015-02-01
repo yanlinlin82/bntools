@@ -20,10 +20,11 @@ static void print_usage(void)
 			"Options:\n"
 			"   <ref>        reference genome, in tsv/cmap format\n"
 			"   <query>      query molecules/contigs, in tsv/cmap/bnx format\n"
-			"   -v           show verbose message\n"
 			"   -e <FLOAT>   tolerance to compare fragment size [%f]\n"
 			"   -m <INT>     minimal matched labels in query fragment [%d]\n"
 			"   -a           output alignment detail\n"
+			"   -v           show verbose message\n"
+			"   -h           show this help\n"
 			"\n", DEF_TOLERANCE, DEF_MIN_MATCH);
 }
 
@@ -174,11 +175,8 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "ve:m:a")) != -1) {
+	while ((c = getopt(argc, argv, "e:m:avh")) != -1) {
 		switch (c) {
-		case 'v':
-			++verbose;
-			break;
 		case 'e':
 			tolerance = atof(optarg);
 			break;
@@ -188,6 +186,11 @@ static int check_options(int argc, char * const argv[])
 		case 'a':
 			output_align = 1;
 			break;
+		case 'v':
+			++verbose;
+			break;
+		case 'h':
+			print_usage();
 		default:
 			return 1;
 		}

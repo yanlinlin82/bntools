@@ -36,13 +36,14 @@ static void print_usage(void)
 			"   -r STR         recognition sequence ["DEF_REC_SEQ"]\n"
 			"   -S             select only chr1-22, chrX and chrY to nick\n"
 			"   -v             show verbose messages\n"
+			"   -h             show this help\n"
 			"\n");
 }
 
 static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "o:f:e:r:Sv")) != -1) {
+	while ((c = getopt(argc, argv, "o:f:e:r:Svh")) != -1) {
 		switch (c) {
 		case 'o':
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
@@ -66,6 +67,8 @@ static int check_options(int argc, char * const argv[])
 		case 'v':
 			++verbose;
 			break;
+		case 'h':
+			print_usage();
 		default:
 			return 1;
 		}

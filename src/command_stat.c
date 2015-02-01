@@ -14,17 +14,20 @@ static void print_usage(void)
 			"Options:\n"
 			"   <ref>   reference genome, in tsv/cmap format\n"
 			"   -v      show verbose message\n"
+			"   -h      show this help\n"
 			"\n");
 }
 
 static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "v")) != -1) {
+	while ((c = getopt(argc, argv, "vh")) != -1) {
 		switch (c) {
 		case 'v':
 			++verbose;
 			break;
+		case 'h':
+			print_usage();
 		default:
 			return 1;
 		}

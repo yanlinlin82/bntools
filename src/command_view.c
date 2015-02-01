@@ -2,7 +2,7 @@
 #include <string.h>
 #include <stdlib.h>
 #include <errno.h>
-#include <getopt.h>
+#include <unistd.h>
 #include <limits.h>
 #include "nick_map.h"
 #include "bn_file.h"
@@ -29,13 +29,14 @@ static void print_usage(void)
 			"   -s FILE         select fragment by name, listed in lines\n"
 			"   -c              count fragments and nicks\n"
 			"   -v              show verbose message\n"
+			"   -h              show this help\n"
 			"\n");
 }
 
 static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "o:f:s:cv")) != -1) {
+	while ((c = getopt(argc, argv, "o:f:s:cvh")) != -1) {
 		switch (c) {
 		case 'o':
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
@@ -56,6 +57,8 @@ static int check_options(int argc, char * const argv[])
 		case 'v':
 			++verbose;
 			break;
+		case 'h':
+			print_usage();
 		default:
 			return 1;
 		}

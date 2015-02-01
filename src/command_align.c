@@ -3,7 +3,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <errno.h>
-#include <getopt.h>
+#include <unistd.h>
 #include <limits.h>
 #include "nick_map.h"
 #include "bn_file.h"
@@ -20,6 +20,7 @@ static void print_usage(void)
 			"Options:\n"
 			"   <map_a/b>   input map file(s), in tsv/cmap/bnx format\n"
 			"   -v          show verbose message\n"
+			"   -h          show this help\n"
 			"\n");
 }
 
@@ -201,11 +202,13 @@ static int align_between_maps(const struct nick_map *map1, const struct nick_map
 static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "v")) != -1) {
+	while ((c = getopt(argc, argv, "vh")) != -1) {
 		switch (c) {
 		case 'v':
 			++verbose;
 			break;
+		case 'h':
+			print_usage();
 		default:
 			return 1;
 		}
