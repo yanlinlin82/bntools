@@ -774,13 +774,13 @@ gzFile open_gzfile_write(const char *filename)
 	gzFile file;
 
 	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdout") == 0) {
-		file = gzdopen(1, "wT"); /* stdout, without compression */
+		file = gzdopen(1, "wT"); /* 1: stdout; 'T': without compression */
 	} else {
 		size_t len = strlen(filename);
 		if (len > 3 && strcmp(filename + len - 3, ".gz") == 0) {
-			file = gzopen(filename, "wx"); /* 'x' is for checking existance */
+			file = gzopen(filename, "wx9"); /* 'x': check existed; '9': best compression */
 		} else {
-			file = gzopen(filename, "wxT"); /* without compression */
+			file = gzopen(filename, "wxT"); /* 'T': without compression */
 		}
 	}
 	if (!file) {
