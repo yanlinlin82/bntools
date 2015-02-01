@@ -323,8 +323,10 @@ static int bn_read_tsv(struct bn_file *fp, struct fragment *f)
 			strand = 0;
 		} else if (strcmp(strandText, "+") == 0) {
 			strand = NICK_PLUS_STRAND;
-		} else if (strcmp(strandText, "+/-") == 0) {
+		} else if (strcmp(strandText, "-") == 0) {
 			strand = NICK_MINUS_STRAND;
+		} else if (strcmp(strandText, "+/-") == 0) {
+			strand = NICK_PLUS_STRAND | NICK_MINUS_STRAND;
 		} else if (strcmp(strandText, "*") == 0) {
 			strand = -1;
 		} else {
@@ -335,7 +337,7 @@ static int bn_read_tsv(struct bn_file *fp, struct fragment *f)
 		skip_current_line(fp);
 
 		if (strand >= 0) {
-			if (array_reserve(f->nicks, f->size + 1)) {
+			if (array_reserve(f->nicks, f->nicks.size + 1)) {
 				return -ENOMEM;
 			}
 			f->nicks.data[f->nicks.size].pos = pos;
