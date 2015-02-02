@@ -142,6 +142,7 @@ static int read_double(struct bn_file *fp, double *value)
 		} else if (isdigit(c)) {
 			if (point) {
 				*value += (c - '0') * factor;
+				factor /= 10;
 			} else {
 				*value = *value * 10 + (c - '0');
 			}
