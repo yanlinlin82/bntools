@@ -27,7 +27,7 @@ static void print_usage(void)
 			"   -o FILE         output file ["DEF_OUTPUT"]\n"
 			"   -f STR          output format, tsv/cmap/bnx/txt ["DEF_FORMAT"]\n"
 			"   -s FILE         select fragment by name, listed in lines\n"
-			"   -c              count fragments and nicks\n"
+			"   -c              count fragments, nicks and total size\n"
 			"   -v              show verbose message\n"
 			"   -h              show this help\n"
 			"\n");
@@ -78,6 +78,7 @@ int view_main(int argc, char * const argv[])
 	struct name_list name_list = { };
 	size_t fragment_count = 0;
 	size_t nick_count = 0;
+	long long total_size = 0;
 	gzFile file;
 	int i, ret = 0, save_into_map;
 
@@ -124,6 +125,7 @@ int view_main(int argc, char * const argv[])
 			if (counting) {
 				++fragment_count;
 				nick_count += fragment.nicks.size;
+				total_size += fragment.size;
 			} else if (save_into_map) {
 				if (array_reserve(map.fragments, map.fragments.size + 1)) {
 					nick_map_free(&map);
@@ -139,7 +141,7 @@ int view_main(int argc, char * const argv[])
 	}
 
 	if (counting) {
-		fprintf(stdout, "%zd\t%zd\n", fragment_count, nick_count);
+		fprintf(stdout, "%zd\t%zd\t%lld\n", fragment_count, nick_count, total_size);
 	} else if (save_into_map) {
 		nick_map_save(&map, output_file, format);
 	} else {
