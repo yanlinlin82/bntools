@@ -9,7 +9,7 @@ static int verbose = 0;
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
-			"Usage: bntools motif [options] <ref>\n"
+			"Usage: bntools index [options] <ref>\n"
 			"\n"
 			"Options:\n"
 			"   <ref>   reference genome, in tsv/cmap format\n"
@@ -39,7 +39,7 @@ static int check_options(int argc, char * const argv[])
 	return 0;
 }
 
-int motif_main(int argc, char * const argv[])
+int index_main(int argc, char * const argv[])
 {
 	struct ref_map ref;
 
