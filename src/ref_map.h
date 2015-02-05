@@ -3,6 +3,7 @@
 
 #include <string.h>
 #include "nick_map.h"
+#include "array.h"
 
 enum node_flag {
 	FIRST_INTERVAL = 1,
@@ -31,10 +32,8 @@ struct ref_map {
 	int nick_offset;
 	int palindrome;
 
-	size_t node_count;
-	struct ref_node *node;
-	size_t index_count;
-	struct ref_index *index;
+	array(struct ref_node) nodes;
+	array(struct ref_index) index_;
 };
 
 void ref_map_init(struct ref_map *ref);
@@ -43,7 +42,7 @@ int ref_map_set_enzyme(struct ref_map *ref, const char *enzyme, const char *rec_
 
 int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_only, int verbose);
 
-void ref_map_build_index(struct ref_map *ref);
+int ref_map_build_index(struct ref_map *ref);
 void ref_map_dump(const struct ref_map *ref);
 
 #endif /* __REF_MAP_H__ */

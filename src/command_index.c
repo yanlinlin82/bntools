@@ -41,7 +41,7 @@ static int check_options(int argc, char * const argv[])
 
 int index_main(int argc, char * const argv[])
 {
-	struct ref_map ref;
+	struct ref_map ref = { };
 
 	if (check_options(argc, argv)) {
 		return 1;

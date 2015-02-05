@@ -597,6 +597,10 @@ int nick_map_load(struct nick_map *map, const char *filename)
 	struct fragment fragment = { };
 	int err;
 
+	assert(map != NULL);
+	assert(map->fragments.data == NULL);
+	assert(map->fragments.size == 0);
+
 	fp = bn_open(filename);
 	if (!fp) {
 		return -1;
@@ -609,7 +613,12 @@ int nick_map_load(struct nick_map *map, const char *filename)
 		if (array_reserve(map->fragments, map->fragments.size + 1)) {
 			return -ENOMEM;
 		}
-		memcpy(&map->fragments.data[map->fragments.size++], &fragment, sizeof(struct fragment));
+		/* move data from 'fragment' to 'map->fragments.data' */
+		memcpy(&map->fragments.data[map->fragments.size++],
+				&fragment, sizeof(struct fragment));
+		fragment.nicks.data = NULL;
+		fragment.nicks.size = 0;
+		fragment.nicks.capacity = 0;
 	}
 	bn_close(fp);
 	return 0;
