@@ -43,6 +43,8 @@ int ref_map_set_enzyme(struct ref_map *ref, const char *enzyme, const char *rec_
 int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_only, int verbose);
 
 int ref_map_build_index(struct ref_map *ref);
-void ref_map_dump(const struct ref_map *ref);
+int ref_map_save(const struct ref_map *ref, const char *filename);
+
+const char *get_index_filename(const char *filename, char *buf, size_t bufsize);
 
 #endif /* __REF_MAP_H__ */

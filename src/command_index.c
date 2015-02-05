@@ -15,6 +15,10 @@ static void print_usage(void)
 			"   <ref>   reference genome, in tsv/cmap format\n"
 			"   -v      show verbose message\n"
 			"   -h      show this help\n"
+			"\n"
+			"Note:\n"
+			"   Index file will be saved as '<NAME>.idx.gz', unless input <ref>\n"
+			"is '-' or 'stdin'. In such case, the index will be output to stdout.\n"
 			"\n");
 }
 
@@ -41,19 +45,27 @@ static int check_options(int argc, char * const argv[])
 
 int index_main(int argc, char * const argv[])
 {
+	char path[PATH_MAX] = "stdout";
 	struct ref_map ref = { };
 
 	if (check_options(argc, argv)) {
 		return 1;
 	}
+	get_index_filename(argv[optind], path, sizeof(path));
 
 	ref_map_init(&ref);
 	if (nick_map_load(&ref.map, argv[optind])) {
 		return 1;
 	}
 	ref_map_build_index(&ref);
-	ref_map_dump(&ref);
-
+	if (ref_map_save(&ref, path)) {
+		ref_map_free(&ref);
+		return 1;
+	}
 	ref_map_free(&ref);
+
+	if (strcmp(path, "-") != 0) {
+		fprintf(stderr, "Index file '%s' generated.\n", path);
+	}
 	return 0;
 }

@@ -2,9 +2,14 @@
 #include <ctype.h>
 #include <errno.h>
 #include <assert.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 #include <zlib.h>
+#include "version.h"
 #include "ref_map.h"
 #include "base_map.h"
+#include "bn_file.h"
 
 void ref_map_init(struct ref_map *ref)
 {
@@ -322,24 +327,54 @@ int ref_map_build_index(struct ref_map *ref)
 	return 0;
 }
 
-void ref_map_dump(const struct ref_map *ref)
+const char *get_index_filename(const char *filename, char *buf, size_t bufsize)
 {
+	struct stat sb;
+	size_t len;
+
+	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
+		snprintf(buf, bufsize, "-");
+	} else if (stat(filename, &sb) == 0 && !S_ISREG(sb.st_mode)) {
+		snprintf(buf, bufsize, "-");
+	} else {
+		snprintf(buf, bufsize, "%s", filename);
+		len = strlen(filename);
+		if (len > 3 && strcmp(filename + len - 3, ".gz") == 0) {
+			len -= 3;
+		}
+		snprintf(buf + len, bufsize - len, ".idx.gz");
+	}
+	return buf;
+}
+
+int ref_map_save(const struct ref_map *ref, const char *filename)
+{
+	gzFile file;
 	size_t i, j;
 
-	fprintf(stdout, "#id\tname\tlabel\tstrand\tpos\tsize\tflag\tuniq\tseq\n");
+	file = open_gzfile_write(filename);
+	if (!file) {
+		return -EINVAL;
+	}
+
+	gzprintf(file, "##fileformat=IDXv0.1\n");
+	gzprintf(file, "##program=bntools\n");
+	gzprintf(file, "##programversion="VERSION"\n");
+	gzprintf(file, "#chrom\tlabel\tstrand\tname\tpos\tsize\tuniq\tseq\n");
 
 	for (i = 0; i < ref->index_.size; ++i) {
 		const struct ref_index *r = &ref->index_.data[i];
-		fprintf(stdout, "%zd\t%s\t%zd\t%s\t%d\t%d\t%d\t%d\t", i + 1,
+		gzprintf(file, "%zd\t%zd\t%s\t%s\t%d\t%d\t%d\t",
+				r->node->chrom + 1, r->node->label, (r->direct > 0 ? "+" : "-"),
 				ref->map.fragments.data[r->node->chrom].name,
-				r->node->label, (r->direct > 0 ? "+" : "-"),
-				r->node->pos, r->node->size, r->node->flag,
-				r->uniq_count);
+				r->node->pos, r->node->size, r->uniq_count);
 		for (j = 0; j < r->uniq_count; ++j) {
 			const struct ref_node *n = &r->node[j * r->direct];
-			fprintf(stdout, "%s%d", (j == 0 ? "": ","), n->size);
+			gzprintf(file, "%s%d", (j == 0 ? "": ","), n->size);
 			if (meet_last(r, j * r->direct)) break;
 		}
-		fprintf(stdout, "\n");
+		gzprintf(file, "\n");
 	}
+	gzclose(file);
+	return 0;
 }
