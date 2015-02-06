@@ -1,4 +1,6 @@
 #include <stdio.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 #include <unistd.h>
 #include "nick_map.h"
 #include "ref_map.h"
@@ -208,11 +210,18 @@ int map_main(int argc, char * const argv[])
 	struct ref_map ref;
 	struct nick_map qry;
 	size_t i;
+	struct stat sb;
 
 	if (check_options(argc, argv)) {
 		return 1;
 	}
 	get_index_filename(argv[optind], path, sizeof(path));
+
+	if (stat(path, &sb) == -1 && errno == ENOENT) {
+		fprintf(stderr, "Error: Index file '%s' does not exist!\n"
+				"  Please try 'bntools index' first.\n", path);
+		return 1;
+	}
 
 	ref_map_init(&ref);
 	if (nick_map_load(&ref.map, argv[optind])) {
