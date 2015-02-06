@@ -13,7 +13,6 @@
 static int verbose = 0;
 static double tolerance = DEF_TOLERANCE;
 static int min_match = DEF_MIN_MATCH;
-static int output_align = 0;
 
 static void print_usage(void)
 {
@@ -25,7 +24,6 @@ static void print_usage(void)
 			"   <query>      query molecules/contigs, in tsv/cmap/bnx format\n"
 			"   -e <FLOAT>   tolerance to compare fragment size [%f]\n"
 			"   -m <INT>     minimal matched labels in query fragment [%d]\n"
-			"   -a           output alignment detail\n"
 			"   -v           show verbose message\n"
 			"   -h           show this help\n"
 			"\n", DEF_TOLERANCE, DEF_MIN_MATCH);
@@ -38,16 +36,6 @@ static void print_header(void)
 }
 
 static inline size_t max(size_t a, size_t b) { return (a >= b ? a : b); }
-
-static int get_number_width(int x)
-{
-	int width = 1;
-	while (x >= 10) {
-		x /= 10;
-		++width;
-	}
-	return width;
-}
 
 static void output_item(const struct ref_map *ref, const struct fragment *qry,
 		size_t rindex, size_t qindex, int direct, size_t matched_nicks)
@@ -62,59 +50,18 @@ static void output_item(const struct ref_map *ref, const struct fragment *qry,
 	int ref_size = abs(ref->nodes.data[rend].pos - ref->nodes.data[rstart].pos);
 	int qry_size = qry->nicks.data[qindex + matched_nicks - 2].pos - qry->nicks.data[qindex - 1].pos;
 	int pos = (direct > 0 ? p->pos : (p - matched_nicks + 1)->pos);
+	size_t i;
 
-	fprintf(stdout, "%s\t%s\t%d\t%s\t%d\t%zd\t%d\t%zd\t%zd\t%zd\t%zd\t%zd\n",
-			qname, rname, pos, (direct > 0 ? "+" : "-"), ref_size, matched_nicks, qry_size, matched_nicks,
-			ref->nodes.data[rstart].label, ref->nodes.data[rend].label, qstart, qend);
+	fprintf(stdout, "%s\t%s\t%d\t%s\t", qname, rname, pos, (direct > 0 ? "+" : "-"));
+	fprintf(stdout, "%d\t%zd\t%d\t%zd\t", ref_size, matched_nicks, qry_size, matched_nicks);
+	fprintf(stdout, "%zd\t%zd\t%zd\t%zd\t", ref->nodes.data[rstart].label, ref->nodes.data[rend].label, qstart, qend);
 
-	if (output_align) {
-		int name_width, pos_width;
-		size_t i;
-		int *q = malloc(sizeof(int) * (matched_nicks + 1));
-		int *r = malloc(sizeof(int) * (matched_nicks + 1));
-		int *w = malloc(sizeof(int) * (matched_nicks + 1));
-
-		name_width = (int)max(strlen(rname), strlen(qname));
-		pos_width = get_number_width(max(max(rstart, rend), max(qstart, qend)));
-
-		for (i = 0; i < matched_nicks + 1; ++i) {
-			r[i] = ref->nodes.data[rstart + i + 1].pos - ref->nodes.data[rstart + i].pos;
-			q[i] = qry->nicks.data[qstart + direct * i + 1].pos
-					- qry->nicks.data[qstart + direct * i].pos;
-			w[i] = get_number_width(max(r[i], q[i]));
-		}
-
-		printf(" %*s: ", name_width, rname);
-		for (i = 0; i < matched_nicks + 1; ++i) {
-			printf("%*zd", pos_width, ref->nodes.data[rstart + i].label);
-			if (i < matched_nicks) {
-				printf(" -(%*d)- ", w[i], r[i]);
-			}
-		}
-		printf("\n");
-
-		printf(" %*s  ", name_width, "");
-		for (i = 0; i < matched_nicks + 1; ++i) {
-			printf("%*c", pos_width, '|');
-			if (i < matched_nicks) {
-				printf("  (%*d)  ", w[i], q[i] - r[i]);
-			}
-		}
-		printf("\n");
-
-		printf(" %*s: ", name_width, qname);
-		for (i = 0; i < matched_nicks + 1; ++i) {
-			printf("%*zd", pos_width, qstart + direct * i + 1);
-			if (i < matched_nicks) {
-				printf(" -(%*d)- ", w[i], q[i]);
-			}
-		}
-		printf("\n");
-
-		free(w);
-		free(r);
-		free(q);
+	for (i = 0; i + 1 < matched_nicks; ++i) {
+		fprintf(stdout, "%s%d:%d", (i == 0 ? "" : "|"),
+				ref->nodes.data[rindex + direct * i].size,
+				qry->nicks.data[qindex + i].pos - qry->nicks.data[qindex + i - 1].pos);
 	}
+	fprintf(stdout, "\n");
 }
 
 static void map(const struct ref_map *ref, struct fragment *qry_item)
@@ -181,9 +128,6 @@ static int check_options(int argc, char * const argv[])
 			break;
 		case 'm':
 			min_match = atoi(optarg);
-			break;
-		case 'a':
-			output_align = 1;
 			break;
 		case 'v':
 			++verbose;
