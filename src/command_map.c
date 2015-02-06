@@ -128,10 +128,9 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 		return;
 	}
 
-	for (qindex = 1; qindex < qry_item->nicks.size; ) {
+	for (qindex = 1; qindex < qry_item->nicks.size; ++qindex) {
 		const struct nick *p = &qry_item->nicks.data[qindex];
 		int fragment_size = p->pos - (p - 1)->pos;
-		size_t max_count = 0;
 		for (i = 0; i < ref->index_.size; ++i) {
 			const struct ref_index *r = &ref->index_.data[i];
 			const struct ref_node *n = r->node;
@@ -167,12 +166,8 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 			}
 			if (j + 1 >= min_match) { /* now j equals to matched interval number */
 				output_item(ref, qry_item, rindex, qindex, r->direct, j + 1);
-				if (max_count < j) {
-					max_count = j;
-				}
 			}
 		}
-		qindex += (max_count > 0 ? max_count : 1);
 	}
 }
 
