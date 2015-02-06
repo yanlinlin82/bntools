@@ -116,6 +116,12 @@ int view_main(int argc, char * const argv[])
 			ret = 1;
 			goto out;
 		}
+		if (fp->format == FORMAT_UNKNOWN) {
+			fprintf(stderr, "Error: Unknown file format of '%s'!\n", argv[i]);
+			bn_close(fp);
+			ret = 1;
+			goto out;
+		}
 		while (bn_read(fp, &fragment) == 0) {
 			if (name_list_file[0]) {
 				if (!name_list_has(&name_list, fragment.name)) {

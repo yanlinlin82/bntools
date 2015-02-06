@@ -247,41 +247,74 @@ static int sort_by_size(const void *a, const void *b)
 	return 0;
 }
 
-int ref_map_build_index(struct ref_map *ref)
+static void set_node(struct ref_node *node,
+		size_t chrom, size_t label, int pos, int size, int flag)
 {
-	size_t node_count, index_count;
-	size_t i, j, k, m, n;
+	node->chrom = chrom;
+	node->label = label;
+	node->pos = pos;
+	node->size = size;
+	node->flag = flag;
+}
+
+static int ref_map_prepare_nodes(struct ref_map *ref)
+{
+	size_t count, i, j;
 
 	assert(ref->nodes.size == 0);
-	assert(ref->index_.size == 0);
 
-	node_count = 0;
-	index_count = 0;
-	for (i = 0; i < ref->map.fragments.size; ++i) {
+	for (count = 0, i = 0; i < ref->map.fragments.size; ++i) {
 		if (ref->map.fragments.data[i].nicks.size > 1) {
-			node_count += ref->map.fragments.data[i].nicks.size + 1;
-			index_count += (ref->map.fragments.data[i].nicks.size - 1) * 2;
+			count += ref->map.fragments.data[i].nicks.size + 1;
 		}
 	}
+	if (array_reserve(ref->nodes, count)) {
+		return -ENOMEM;
+	}
 
-	if (array_reserve(ref->nodes, node_count)) return -ENOMEM;
-	if (array_reserve(ref->index_, index_count)) return -ENOMEM;
+	for (i = 0; i < ref->map.fragments.size; ++i) {
+		const struct fragment *f = &ref->map.fragments.data[i];
+		if (f->nicks.size <= 1) continue;
+		set_node(&ref->nodes.data[ref->nodes.size++],
+				i, 0, 0, f->nicks.data[0].pos, FIRST_INTERVAL);
+		for (j = 0; j + 1 < f->nicks.size; ++j) {
+			set_node(&ref->nodes.data[ref->nodes.size++],
+					i, j + 1, f->nicks.data[j].pos,
+					f->nicks.data[j + 1].pos - f->nicks.data[j].pos, 0);
+		}
+		set_node(&ref->nodes.data[ref->nodes.size++],
+				i, f->nicks.size, f->nicks.data[f->nicks.size - 1].pos,
+				f->size - f->nicks.data[f->nicks.size - 1].pos, LAST_INTERVAL);
+	}
+	assert(ref->nodes.size == count);
+	return 0;
+}
+
+int ref_map_build_index(struct ref_map *ref)
+{
+	size_t count, i, j, k, m, n;
+
+	if (ref_map_prepare_nodes(ref)) {
+		return -ENOMEM;
+	}
+
+	assert(ref->index_.size == 0);
+
+	count = 0;
+	for (i = 0; i < ref->map.fragments.size; ++i) {
+		if (ref->map.fragments.data[i].nicks.size > 1) {
+			count += (ref->map.fragments.data[i].nicks.size - 1) * 2;
+		}
+	}
+	if (array_reserve(ref->index_, count)) {
+		return -ENOMEM;
+	}
 
 	for (i = 0, m = 0, n = 0; i < ref->map.fragments.size; ++i) {
 		const struct fragment *f = &ref->map.fragments.data[i];
 		if (f->nicks.size <= 1) continue;
-		ref->nodes.data[m].chrom = i;
-		ref->nodes.data[m].label = 0;
-		ref->nodes.data[m].pos = 0;
-		ref->nodes.data[m].size = f->nicks.data[0].pos;
-		ref->nodes.data[m].flag = FIRST_INTERVAL;
 		++m;
 		for (j = 0; j + 1 < f->nicks.size; ++j) {
-			ref->nodes.data[m].chrom = i;
-			ref->nodes.data[m].label = j + 1;
-			ref->nodes.data[m].pos = f->nicks.data[j].pos;
-			ref->nodes.data[m].size = f->nicks.data[j + 1].pos - f->nicks.data[j].pos;
-			ref->nodes.data[m].flag = 0;
 			for (k = 0; k < 2; ++k) {
 				ref->index_.data[n].node = &ref->nodes.data[m];
 				ref->index_.data[n].direct = (k == 0 ? 1 : -1);
@@ -290,17 +323,10 @@ int ref_map_build_index(struct ref_map *ref)
 			}
 			++m;
 		}
-		ref->nodes.data[m].chrom = i;
-		ref->nodes.data[m].label = f->nicks.size;
-		ref->nodes.data[m].pos = f->nicks.data[f->nicks.size - 1].pos;
-		ref->nodes.data[m].size = f->size - f->nicks.data[f->nicks.size - 1].pos;
-		ref->nodes.data[m].flag = LAST_INTERVAL;
 		++m;
 	}
-	assert(m == node_count);
-	assert(n == index_count);
-	ref->nodes.size = node_count;
-	ref->index_.size = index_count;
+	assert(n == count);
+	ref->index_.size = count;
 
 	qsort(ref->index_.data, ref->index_.size, sizeof(struct ref_index), sort_by_size);
 
@@ -360,11 +386,12 @@ int ref_map_save(const struct ref_map *ref, const char *filename)
 	gzprintf(file, "##fileformat=IDXv0.1\n");
 	gzprintf(file, "##program=bntools\n");
 	gzprintf(file, "##programversion="VERSION"\n");
-	gzprintf(file, "#chrom\tlabel\tstrand\tname\tpos\tsize\tuniq\tseq\n");
+	gzprintf(file, "#index\tchrom\tlabel\tstrand\tname\tpos\tsize\tuniq\tseq\n");
 
 	for (i = 0; i < ref->index_.size; ++i) {
 		const struct ref_index *r = &ref->index_.data[i];
-		gzprintf(file, "%zd\t%zd\t%s\t%s\t%d\t%d\t%d\t",
+		gzprintf(file, "%zd\t%zd\t%zd\t%s\t%s\t%d\t%d\t%d\t",
+				r->node - ref->nodes.data,
 				r->node->chrom + 1, r->node->label, (r->direct > 0 ? "+" : "-"),
 				ref->map.fragments.data[r->node->chrom].name,
 				r->node->pos, r->node->size, r->uniq_count);
@@ -376,5 +403,150 @@ int ref_map_save(const struct ref_map *ref, const char *filename)
 		gzprintf(file, "\n");
 	}
 	gzclose(file);
+	return 0;
+}
+
+int ref_map_load(struct ref_map *ref, const char *filename)
+{
+	struct bn_file *file;
+	size_t count;
+	int value;
+	size_t index, chrom, label;
+	char directText[2];
+	int direct;
+	char name[64];
+	int pos, size, uniq;
+	size_t i, m;
+	const struct ref_node *node;
+
+	if (ref_map_prepare_nodes(ref)) {
+		return -ENOMEM;
+	}
+
+	assert(ref->index_.size == 0);
+
+	count = 0;
+	for (i = 0; i < ref->map.fragments.size; ++i) {
+		if (ref->map.fragments.data[i].nicks.size > 1) {
+			count += (ref->map.fragments.data[i].nicks.size - 1) * 2;
+		}
+	}
+	if (array_reserve(ref->index_, count)) {
+		return -ENOMEM;
+	}
+
+	file = bn_open(filename);
+	if (!file) {
+		return -EINVAL;
+	}
+	if (bn_skip_comment_lines(file)) {
+		bn_close(file);
+		return -EINVAL;
+	}
+	for (m = 0;;) {
+		if (read_integer(file, &value)) {
+			break;
+		}
+		if (value < 0) {
+			bn_file_error(file, "Invalid value in 'index' column");
+			bn_close(file);
+			return -EINVAL;
+		}
+		index = value;
+		node = ref->nodes.data + index;
+
+		if (read_integer(file, &value)) {
+			bn_file_error(file, "Failed to read 'chrom' column");
+			bn_close(file);
+			return -EINVAL;
+		}
+		if (value <= 0) {
+			bn_file_error(file, "Invalid value in 'chrom' column");
+			bn_close(file);
+			return -EINVAL;
+		}
+		chrom = value - 1;
+		if (node->chrom != chrom) {
+			bn_file_error(file, "Column 'chrom' does not match");
+			bn_close(file);
+			return -EINVAL;
+		}
+
+		if (read_integer(file, &value)) {
+			bn_file_error(file, "Failed to read 'label' column");
+			bn_close(file);
+			return -EINVAL;
+		}
+		label = value;
+		if (node->label != label) {
+			bn_file_error(file, "Column 'label' does not match");
+			bn_close(file);
+			return -EINVAL;
+		}
+
+		if (read_string(file, directText, sizeof(directText))) {
+			bn_file_error(file, "Failed to read 'strand' column");
+			bn_close(file);
+			return -EINVAL;
+		}
+		if (strcmp(directText, "+") == 0) {
+			direct = 1;
+		} else if (strcmp(directText, "-") == 0) {
+			direct = -1;
+		} else {
+			bn_file_error(file, "Invalid value '%s' in 'strand' column", directText);
+			bn_close(file);
+			return -EINVAL;
+		}
+
+		if (read_string(file, name, sizeof(name))) {
+			bn_file_error(file, "Failed to read 'name' column");
+			bn_close(file);
+			return -EINVAL;
+		}
+		if (strcmp(ref->map.fragments.data[chrom].name, name) != 0) {
+			bn_file_error(file, "Column 'name' does not match");
+			bn_close(file);
+			return -EINVAL;
+		}
+
+		if (read_integer(file, &pos)) {
+			bn_file_error(file, "Failed to read 'pos' column");
+			bn_close(file);
+			return -EINVAL;
+		}
+		if (node->pos != pos) {
+			bn_file_error(file, "Column 'pos' does not match");
+			bn_close(file);
+			return -EINVAL;
+		}
+
+		if (read_integer(file, &size)) {
+			bn_file_error(file, "Failed to read 'size' column");
+			bn_close(file);
+			return -EINVAL;
+		}
+		if (node->size != size) {
+			bn_file_error(file, "Column 'size' does not match");
+			bn_close(file);
+			return -EINVAL;
+		}
+
+		if (read_integer(file, &uniq)) {
+			bn_file_error(file, "Failed to read 'uniq' column");
+			bn_close(file);
+			return -EINVAL;
+		}
+		ref->index_.data[m].node = ref->nodes.data + index;
+		ref->index_.data[m].direct = direct;
+		ref->index_.data[m].uniq_count = uniq;
+		++m;
+
+		skip_current_line(file);
+	}
+	assert(m == count);
+	ref->index_.size = count;
+
+	bn_close(file);
 	return 0;
 }

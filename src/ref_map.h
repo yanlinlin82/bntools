@@ -44,6 +44,7 @@ int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_onl
 
 int ref_map_build_index(struct ref_map *ref);
 int ref_map_save(const struct ref_map *ref, const char *filename);
+int ref_map_load(struct ref_map *ref, const char *filename);
 
 const char *get_index_filename(const char *filename, char *buf, size_t bufsize);
 

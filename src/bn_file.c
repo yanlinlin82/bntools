@@ -26,7 +26,7 @@ static void skip_spaces(struct bn_file *fp)
 	}
 }
 
-static void skip_current_line(struct bn_file *fp)
+void skip_current_line(struct bn_file *fp)
 {
 	int c;
 	while ((c = gzgetc(fp->file)) != EOF) {
@@ -66,7 +66,7 @@ static void skip_to_next_line(struct bn_file *fp, char *buf, size_t bufsize)
 	}
 }
 
-static int read_string(struct bn_file *fp, char *buf, size_t bufsize)
+int read_string(struct bn_file *fp, char *buf, size_t bufsize)
 {
 	size_t i = 0;
 	int c;
@@ -88,7 +88,7 @@ static int read_string(struct bn_file *fp, char *buf, size_t bufsize)
 	return (i > 0 ? 0 : -1);
 }
 
-static int read_integer(struct bn_file *fp, int *value)
+int read_integer(struct bn_file *fp, int *value)
 {
 	int c;
 
@@ -156,9 +156,6 @@ static int read_double(struct bn_file *fp, double *value)
 	return 0;
 }
 
-#define bn_file_error(fp, fmt, args...) \
-	fprintf(stderr, "Error: " fmt " at line %zd of file '%s'\n", ##args, (fp)->line, (fp)->name)
-
 struct bn_file *bn_open(const char *filename)
 {
 	struct bn_file *fp;
@@ -204,12 +201,6 @@ struct bn_file *bn_open(const char *filename)
 			c = gzgetc(fp->file);
 			gzungetc(c, fp->file);
 			if (c != '#') break;
-		}
-		if (fp->format == FORMAT_UNKNOWN) {
-			fprintf(stderr, "Error: Unknown file format of '%s'!\n", filename);
-			gzclose(fp->file);
-			free(fp);
-			return NULL;
 		}
 	}
 	return fp;
@@ -495,14 +486,28 @@ static int bn_read_cmap(struct bn_file *fp, struct fragment *f)
 	return (f->name[0] ? 0 : -1);
 }
 
+int bn_skip_comment_lines(struct bn_file *fp)
+{
+	char buf[256];
+	int c;
+	while ((c = gzgetc(fp->file)) != EOF) {
+		if (c != '#') {
+			gzungetc(c, fp->file);
+			break;
+		}
+		skip_to_next_line(fp, buf, sizeof(buf));
+	}
+	return 0;
+}
+
 int bn_read_header(struct bn_file *fp, struct nick_map *map)
 {
 	switch (fp->format) {
-	case FORMAT_TXT: return 0;
 	case FORMAT_TSV: return bn_read_tsv_header(fp, map);
-	case FORMAT_BNX: return 0;
 	case FORMAT_CMAP: return bn_read_cmap_header(fp, map);
-	default: assert(0); return -1;
+	case FORMAT_TXT:
+	case FORMAT_BNX:
+	default: return bn_skip_comment_lines(fp);
 	}
 }
 

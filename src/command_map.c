@@ -204,6 +204,7 @@ static int check_options(int argc, char * const argv[])
 
 int map_main(int argc, char * const argv[])
 {
+	char path[PATH_MAX];
 	struct ref_map ref;
 	struct nick_map qry;
 	size_t i;
@@ -211,12 +212,16 @@ int map_main(int argc, char * const argv[])
 	if (check_options(argc, argv)) {
 		return 1;
 	}
+	get_index_filename(argv[optind], path, sizeof(path));
 
 	ref_map_init(&ref);
 	if (nick_map_load(&ref.map, argv[optind])) {
 		return 1;
 	}
-	ref_map_build_index(&ref);
+	if (ref_map_load(&ref, path)) {
+		ref_map_free(&ref);
+		return 1;
+	}
 
 	nick_map_init(&qry);
 	if (nick_map_load(&qry, argv[optind + 1])) {
