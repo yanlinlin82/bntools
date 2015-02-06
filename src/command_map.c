@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <stdlib.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -54,23 +55,17 @@ static void output_item(const struct ref_map *ref, const struct fragment *qry,
 	const struct ref_node *p = &ref->nodes.data[rindex];
 	const char *qname = qry->name;
 	const char *rname = ref->map.fragments.data[p->chrom].name;
-	size_t rstart = (direct > 0 ? rindex : rindex - matched_nicks + 1);
-	size_t rend = (direct > 0 ? rindex + matched_nicks : rindex + 1);
-	size_t qstart = (direct > 0 ? qindex : qindex + matched_nicks - 1);
-	size_t qend = (direct > 0 ? qindex + matched_nicks: qindex - 1);
+	size_t rstart = (direct > 0 ? rindex : rindex + 1);
+	size_t rend = (direct > 0 ? rindex + matched_nicks - 1 : rindex - matched_nicks + 2);
+	size_t qstart = qindex;
+	size_t qend = qindex + matched_nicks - 1;
+	int ref_size = abs(ref->nodes.data[rend].pos - ref->nodes.data[rstart].pos);
+	int qry_size = qry->nicks.data[qindex + matched_nicks - 2].pos - qry->nicks.data[qindex - 1].pos;
+	int pos = (direct > 0 ? p->pos : (p - matched_nicks + 1)->pos);
 
-	printf("%s\t", qname);
-	printf("%s\t", rname);
-	printf("%d\t", ref->nodes.data[rstart].pos);
-	printf("%s\t", (direct > 0 ? "+" : "-"));
-	printf("%d\t", ref->nodes.data[rend].pos - ref->nodes.data[rstart].pos);
-	printf("%zd\t", matched_nicks + 1);
-	printf("%d\t", qry->nicks.data[qindex + matched_nicks - 1].pos - qry->nicks.data[qindex].pos);
-	printf("%zd\t", matched_nicks + 1);
-	printf("%zd\t", ref->nodes.data[rstart].label);
-	printf("%zd\t", ref->nodes.data[rend].label);
-	printf("%zd\t", qstart + 1);
-	printf("%zd\n", qend + 1);
+	fprintf(stdout, "%s\t%s\t%d\t%s\t%d\t%zd\t%d\t%zd\t%zd\t%zd\t%zd\t%zd\n",
+			qname, rname, pos, (direct > 0 ? "+" : "-"), ref_size, matched_nicks, qry_size, matched_nicks,
+			ref->nodes.data[rstart].label, ref->nodes.data[rend].label, qstart, qend);
 
 	if (output_align) {
 		int name_width, pos_width;
@@ -133,9 +128,9 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 		return;
 	}
 
-	for (qindex = 0; qindex + 1 < qry_item->nicks.size; ) {
+	for (qindex = 1; qindex < qry_item->nicks.size; ) {
 		const struct nick *p = &qry_item->nicks.data[qindex];
-		int fragment_size = (p + 1)->pos - p->pos;
+		int fragment_size = p->pos - (p - 1)->pos;
 		size_t max_count = 0;
 		for (i = 0; i < ref->index_.size; ++i) {
 			const struct ref_index *r = &ref->index_.data[i];
@@ -145,11 +140,18 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 			if (n->size > fragment_size * (1 + tolerance)) break;
 
 			for (j = 0; j + 1 < qry_item->nicks.size; ++j) {
-				if (j > 0) {
+				if (j > 0 || verbose > 1) {
 					int ref_size = n[j * r->direct].size;
-					int qry_size = (p + j + 1)->pos - (p + j)->pos;
-					if (ref_size < qry_size * (1 - tolerance)) break;
-					if (ref_size > qry_size * (1 + tolerance)) break;
+					int qry_size = (p + j)->pos - (p + j - 1)->pos;
+					if (j > 0) { /* no need to compare when j == 0, since we started from the matched first interval */
+						if (ref_size < qry_size * (1 - tolerance)) break;
+						if (ref_size > qry_size * (1 + tolerance)) break;
+					}
+					if (verbose > 1) {
+						fprintf(stderr, "matched interval: rindex = %zd, qindex = %zd, "
+								"j = %zd, ref_size = %d, qry_size = %d\n",
+								rindex, qindex, j, ref_size, qry_size);
+					}
 				}
 				if (r->direct > 0) {
 					if (n->flag & LAST_INTERVAL) {
@@ -163,8 +165,8 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 					}
 				}
 			}
-			if (j >= min_match) { /* here j equals to matched nick number */
-				output_item(ref, qry_item, rindex, qindex, r->direct, j);
+			if (j + 1 >= min_match) { /* now j equals to matched interval number */
+				output_item(ref, qry_item, rindex, qindex, r->direct, j + 1);
 				if (max_count < j) {
 					max_count = j;
 				}
