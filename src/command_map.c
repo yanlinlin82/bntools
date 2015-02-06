@@ -217,19 +217,17 @@ int map_main(int argc, char * const argv[])
 	}
 	get_index_filename(argv[optind], path, sizeof(path));
 
-	if (stat(path, &sb) == -1 && errno == ENOENT) {
-		fprintf(stderr, "Error: Index file '%s' does not exist!\n"
-				"  Please try 'bntools index' first.\n", path);
-		return 1;
-	}
-
 	ref_map_init(&ref);
 	if (nick_map_load(&ref.map, argv[optind])) {
 		return 1;
 	}
-	if (ref_map_load(&ref, path)) {
-		ref_map_free(&ref);
-		return 1;
+	if (stat(path, &sb) == -1 && errno == ENOENT) {
+		ref_map_build_index(&ref);
+	} else {
+		if (ref_map_load(&ref, path)) {
+			ref_map_free(&ref);
+			return 1;
+		}
 	}
 
 	nick_map_init(&qry);
