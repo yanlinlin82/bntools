@@ -555,52 +555,6 @@ int parse_format_text(const char *s)
 	}
 }
 
-int load_name_list(struct name_list *name_list, const char *filename)
-{
-	FILE *fp = fopen(filename, "r");
-	if (!fp) {
-		return -EINVAL;
-	}
-	while (!feof(fp)) {
-		char buf[256];
-		size_t len;
-		if (!fgets(buf, sizeof(buf), fp)) break;
-		if (buf[0] == '#') continue;
-		len = strlen(buf);
-		if (len > 0 && buf[len - 1] == '\n') {
-			buf[len - 1] = '\0';
-		}
-		if (array_reserve(name_list->names, name_list->names.size + 1)) {
-			fclose(fp);
-			return -ENOMEM;
-		}
-		name_list->names.data[name_list->names.size] = strdup(buf);
-		++name_list->names.size;
-	}
-	fclose(fp);
-	return 0;
-}
-
-void free_name_list(struct name_list *name_list)
-{
-	size_t i;
-	for (i = 0; i < name_list->names.size; ++i) {
-		free(name_list->names.data[i]);
-	}
-	array_free(name_list->names);
-}
-
-int name_list_has(const struct name_list *name_list, const char *name)
-{
-	size_t i;
-	for (i = 0; i < name_list->names.size; ++i) {
-		if (strcmp(name, name_list->names.data[i]) == 0) {
-			return 1;
-		}
-	}
-	return 0;
-}
-
 int nick_map_load(struct nick_map *map, const char *filename)
 {
 	struct bn_file *fp;

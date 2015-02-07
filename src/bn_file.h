@@ -30,12 +30,6 @@ int parse_format_text(const char *s);
 int nick_map_load(struct nick_map *map, const char *filename);
 int nick_map_save(const struct nick_map *map, const char *filename, int format);
 
-struct name_list { array(char *) names; };
-
-int load_name_list(struct name_list *name_list, const char *filename);
-void free_name_list(struct name_list *name_list);
-int name_list_has(const struct name_list *name_list, const char *name);
-
 gzFile open_gzfile_write(const char *filename);
 int save_header(gzFile file, const struct nick_map *map, int format);
 int save_fragment(gzFile file, const struct fragment *fragment, int format);
