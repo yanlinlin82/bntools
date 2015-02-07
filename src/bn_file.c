@@ -280,7 +280,7 @@ static int bn_read_tsv(struct bn_file *fp, struct fragment *f)
 {
 	char name[sizeof(f->name)];
 	char strandText[4];
-	int c, pos, strand;
+	int c, label, pos, strand;
 
 	f->name[0] = '\0';
 	f->nicks.size = 0;
@@ -303,13 +303,18 @@ static int bn_read_tsv(struct bn_file *fp, struct fragment *f)
 			}
 		}
 
+		if (read_integer(fp, &label)) {
+			bn_file_error(fp, "Failed to read 'label' column");
+			return -EINVAL;
+		}
+
 		if (read_integer(fp, &pos)) {
-			bn_file_error(fp, "Failed to read pos column");
+			bn_file_error(fp, "Failed to read 'pos' column");
 			return -EINVAL;
 		}
 
 		if (read_string(fp, strandText, sizeof(strandText))) {
-			bn_file_error(fp, "Failed to read strand column");
+			bn_file_error(fp, "Failed to read 'strand' column");
 		}
 		if (strcmp(strandText, "?") == 0) {
 			strand = 0;
@@ -678,7 +683,7 @@ static int save_tsv_header(gzFile file, const struct nick_map *map)
 	gzprintf(file, "##program=bntools\n");
 	gzprintf(file, "##programversion="VERSION"\n");
 	write_command_line(file);
-	gzprintf(file, "#name\tpos\tstrand\tsize\n");
+	gzprintf(file, "#name\tlabel\tpos\tstrand\tsize\n");
 	return 0;
 }
 
@@ -689,12 +694,12 @@ static int save_fragment_as_tsv(gzFile file, const struct fragment *fragment)
 	const struct nick *n;
 	for (i = 0, n = NULL; i < fragment->nicks.size; ++i) {
 		n = &fragment->nicks.data[i];
-		gzprintf(file, "%s\t%d\t%s\t%d\n",
-				fragment->name, n->pos, STRAND[n->flag & 3],
+		gzprintf(file, "%s\t%zd\t%d\t%s\t%d\n",
+				fragment->name, i, n->pos, STRAND[n->flag & 3],
 				n->pos - (i == 0 ? 0 : (n - 1)->pos));
 	}
-	gzprintf(file, "%s\t%d\t*\t%d\n",
-			fragment->name, fragment->size, fragment->size - (n ? n->pos : 0));
+	gzprintf(file, "%s\t%zd\t%d\t*\t%d\n",
+			fragment->name, fragment->nicks.size, fragment->size, fragment->size - (n ? n->pos : 0));
 	return 0;
 }
 
