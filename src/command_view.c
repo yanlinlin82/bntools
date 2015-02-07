@@ -24,6 +24,12 @@ static char output_file[PATH_MAX] = DEF_OUTPUT;
 static int format = FORMAT_TSV;
 static int counting = 0;
 static array(struct range) ranges = { };
+static int reverse = 0;
+
+static size_t fragment_count = 0;
+static size_t nick_count = 0;
+static long long total_size = 0;
+static int save_into_map = 0;
 
 static void print_usage(void)
 {
@@ -36,6 +42,7 @@ static void print_usage(void)
 			"   -f STR         output format, tsv/cmap/bnx/txt ["DEF_FORMAT"]\n"
 			"   -r STR         select range(s), specified as string\n"
 			"   -R FILE        select range(s), specified as lines in file\n"
+			"   -t             transform to reverse order\n"
 			"   -c             count fragments, nicks and total size\n"
 			"   -v             show verbose message\n"
 			"   -h             show this help, '-hh' for more detail help\n"
@@ -139,7 +146,7 @@ int append_ranges_in_file(const char *filename)
 static int check_options(int argc, char * const argv[])
 {
 	int c;
-	while ((c = getopt(argc, argv, "o:f:r:R:cvh")) != -1) {
+	while ((c = getopt(argc, argv, "o:f:r:R:tcvh")) != -1) {
 		switch (c) {
 		case 'o':
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
@@ -160,6 +167,9 @@ static int check_options(int argc, char * const argv[])
 			if (append_ranges_in_file(optarg)) {
 				return 1;
 			}
+			break;
+		case 't':
+			reverse = 1;
 			break;
 		case 'c':
 			counting = 1;
@@ -217,27 +227,36 @@ static void extract_fragment(const struct fragment *f, int start, int end, struc
 	}
 }
 
-static size_t fragment_count = 0;
-static size_t nick_count = 0;
-static long long total_size = 0;
-static int save_into_map = 0;
-
 int process_fragment(struct nick_map *map, struct fragment *f, gzFile file)
 {
 	if (counting) {
 		++fragment_count;
 		nick_count += f->nicks.size;
 		total_size += f->size;
-	} else if (save_into_map) {
-		if (array_reserve(map->fragments, map->fragments.size + 1)) {
-			return 1;
-		}
-		memcpy(&map->fragments.data[map->fragments.size++], f, sizeof(struct fragment));
-		f->nicks.data = NULL;
-		f->nicks.size = 0;
-		f->nicks.capacity = 0;
 	} else {
-		save_fragment(file, f, format);
+		if (reverse) {
+			size_t i;
+			int pos;
+			for (i = 0; i < f->nicks.size; ++i) {
+				f->nicks.data[i].pos = f->size - f->nicks.data[i].pos;
+			}
+			for (i = 0; i < f->nicks.size / 2; ++i) {
+				pos = f->nicks.data[i].pos;
+				f->nicks.data[i].pos = f->nicks.data[f->nicks.size - 1 - i].pos;
+				f->nicks.data[f->nicks.size - 1 - i].pos = pos;
+			}
+		}
+		if (save_into_map) {
+			if (array_reserve(map->fragments, map->fragments.size + 1)) {
+				return 1;
+			}
+			memcpy(&map->fragments.data[map->fragments.size++], f, sizeof(struct fragment));
+			f->nicks.data = NULL;
+			f->nicks.size = 0;
+			f->nicks.capacity = 0;
+		} else {
+			save_fragment(file, f, format);
+		}
 	}
 	return 0;
 }
