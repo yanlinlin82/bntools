@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
@@ -32,41 +33,56 @@ static void print_usage(void)
 static void print_header(void)
 {
 	printf("#name\tchrom\tpos\tstrand\tsize\tlabels\t"
-			"qsize\tqlabels\trstart\trend\tqstart\tqend\n");
+			"qsize\tqlabels\trstart\trend\tqstart\tqend\tmissing\textra\talignment\n");
 }
 
 static inline size_t max(size_t a, size_t b) { return (a >= b ? a : b); }
 
 static void output_item(const struct ref_map *ref, const struct fragment *qry,
-		size_t rindex, size_t qindex, int direct, size_t matched_nicks)
+		size_t rindex, size_t qindex, int direct, size_t rlabel, size_t qlabel,
+		const int *matches, size_t match_count, size_t missing, size_t extra)
 {
 	const struct ref_node *p = &ref->nodes.data[rindex];
 	const char *qname = qry->name;
 	const char *rname = ref->map.fragments.data[p->chrom].name;
 	size_t rstart = (direct > 0 ? rindex : rindex + 1);
-	size_t rend = (direct > 0 ? rindex + matched_nicks - 1 : rindex - matched_nicks + 2);
+	size_t rend = (direct > 0 ? rindex + rlabel - 1 : rindex - rlabel + 2);
 	size_t qstart = qindex;
-	size_t qend = qindex + matched_nicks - 1;
+	size_t qend = qindex + qlabel - 1;
 	int ref_size = abs(ref->nodes.data[rend].pos - ref->nodes.data[rstart].pos);
-	int qry_size = qry->nicks.data[qindex + matched_nicks - 2].pos - qry->nicks.data[qindex - 1].pos;
-	int pos = (direct > 0 ? p->pos : (p - matched_nicks + 1)->pos);
-	size_t i;
+	int qry_size = qry->nicks.data[qindex + qlabel - 2].pos - qry->nicks.data[qindex - 1].pos;
+	int pos = (direct > 0 ? p->pos : (p - rlabel + 1)->pos);
+	size_t i, j, k;
 
 	fprintf(stdout, "%s\t%s\t%d\t%s\t", qname, rname, pos, (direct > 0 ? "+" : "-"));
-	fprintf(stdout, "%d\t%zd\t%d\t%zd\t", ref_size, matched_nicks, qry_size, matched_nicks);
+	fprintf(stdout, "%d\t%zd\t%d\t%zd\t", ref_size, rlabel, qry_size, qlabel);
 	fprintf(stdout, "%zd\t%zd\t%zd\t%zd\t", ref->nodes.data[rstart].label, ref->nodes.data[rend].label, qstart, qend);
+	fprintf(stdout, "%zd\t%zd\t", missing, extra);
 
-	for (i = 0; i + 1 < matched_nicks; ++i) {
-		fprintf(stdout, "%s%d:%d", (i == 0 ? "" : "|"),
-				ref->nodes.data[rindex + direct * i].size,
-				qry->nicks.data[qindex + i].pos - qry->nicks.data[qindex + i - 1].pos);
+	for (i = 0, j = 0, k = 0; i < match_count; ++i) {
+		if (i > 0) {
+			fprintf(stdout, "|");
+		}
+
+		fprintf(stdout, "%d", ref->nodes.data[rindex + direct * j++].size);
+		if (matches[i] == 2) {
+			fprintf(stdout, "+%d", ref->nodes.data[rindex + direct * j++].size);
+		}
+
+		fprintf(stdout, ":%d", qry->nicks.data[qindex + k].pos - qry->nicks.data[qindex + k - 1].pos);
+		++k;
+		if (matches[i] == 3) {
+			fprintf(stdout, "+%d", qry->nicks.data[qindex + k].pos - qry->nicks.data[qindex + k - 1].pos);
+			++k;
+		}
 	}
 	fprintf(stdout, "\n");
 }
 
 static void map(const struct ref_map *ref, struct fragment *qry_item)
 {
-	size_t rindex, qindex, i, j;
+	size_t rindex, qindex, i, j, k, missing, extra;
+	array(int) matches = { };
 
 	if (qry_item->nicks.size < min_match) {
 		if (verbose > 1) {
@@ -85,34 +101,80 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 			if (n->size < fragment_size * (1 - tolerance)) continue;
 			if (n->size > fragment_size * (1 + tolerance)) break;
 
-			for (j = 0; j + 1 < qry_item->nicks.size; ++j) {
-				if (j > 0 || verbose > 1) {
-					int ref_size = n[j * r->direct].size;
-					int qry_size = (p + j)->pos - (p + j - 1)->pos;
-					if (j > 0) { /* no need to compare when j == 0, since we started from the matched first interval */
-						if (ref_size < qry_size * (1 - tolerance)) break;
-						if (ref_size > qry_size * (1 + tolerance)) break;
-					}
-					if (verbose > 1) {
-						fprintf(stderr, "matched interval: rindex = %zd, qindex = %zd, "
-								"j = %zd, ref_size = %d, qry_size = %d\n",
-								rindex, qindex, j, ref_size, qry_size);
-					}
-				}
+			matches.size = 0;
+			for (j = 0, k = 0, missing = 0, extra = 0; j + 1 < qry_item->nicks.size; ++j, ++k) {
+				int match = 0;
+				int ref_size, qry_size;
+
 				if (r->direct > 0) {
-					if (n->flag & LAST_INTERVAL) {
-						++j;
+					if (n[j * r->direct].flag & LAST_INTERVAL) {
+						assert(j > 0);
 						break;
 					}
 				} else {
-					if (n->flag & FIRST_INTERVAL) {
-						++j;
+					if (n[j * r->direct].flag & FIRST_INTERVAL) {
+						assert(j > 0);
 						break;
 					}
 				}
+				if (j == 0) {
+					match = 1; /* the first interval is always matched */
+					if (verbose > 1) {
+						ref_size = n[j * r->direct].size;
+						qry_size = (p + k)->pos - (p + k - 1)->pos;
+					}
+				} else {
+					/* try matching */
+					ref_size = n[j * r->direct].size;
+					qry_size = (p + k)->pos - (p + k - 1)->pos;
+					if (qry_size >= ref_size * (1 - tolerance) && qry_size <= ref_size * (1 + tolerance)) {
+						match = 1;
+					}
+
+					if (!match) {
+						/* try matching with missing nick */
+						ref_size = n[(j + 1) * r->direct].size + n[j * r->direct].size;
+						qry_size = (p + k)->pos - (p + k - 1)->pos;
+						if (qry_size >= ref_size * (1 - tolerance) && qry_size <= ref_size * (1 + tolerance)) {
+							match = 2;
+							++missing;
+						}
+					}
+
+					if (!match) {
+						/* try matching with extra nick */
+						ref_size = n[j * r->direct].size;
+						qry_size = (p + k + 1)->pos - (p + k - 1)->pos;
+						if (qry_size >= ref_size * (1 - tolerance) && qry_size <= ref_size * (1 + tolerance)) {
+							match = 3;
+							++extra;
+						}
+					}
+				}
+				if (!match) break;
+
+				if (array_reserve(matches, matches.size + 1)) {
+					fprintf(stderr, "Error: Failed to allocate memory!\n");
+					array_free(matches);
+					return;
+				}
+				matches.data[matches.size++] = match;
+
+				if (verbose > 1) {
+					fprintf(stderr, "matched interval: rindex = %zd, qindex = %zd, match = %d, "
+							"j = %zd, k = %zd, ref_size = %d, qry_size = %d\n",
+							rindex, qindex, match, j, k, ref_size, qry_size);
+				}
+
+				if (match == 2) {
+					++j;
+				} else if (match == 3) {
+					++k;
+				}
 			}
-			if (j + 1 >= min_match) { /* now j equals to matched interval number */
-				output_item(ref, qry_item, rindex, qindex, r->direct, j + 1);
+			if (matches.size + 1 >= min_match) {
+				output_item(ref, qry_item, rindex, qindex, r->direct,
+						j + 1, k + 1, matches.data, matches.size, missing, extra);
 			}
 		}
 	}
