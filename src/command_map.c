@@ -65,18 +65,30 @@ static void output_item(const struct ref_map *ref, const struct fragment *qry,
 		}
 
 		fprintf(stdout, "%d", ref->nodes.data[rindex + direct * j++].size);
-		if (matches[i] == 2) {
+		if (matches[i] == 2 || matches[i] == 4) {
 			fprintf(stdout, "+%d", ref->nodes.data[rindex + direct * j++].size);
+			if (matches[i] == 4) {
+				fprintf(stdout, "+%d", ref->nodes.data[rindex + direct * j++].size);
+			}
 		}
 
 		fprintf(stdout, ":%d", qry->nicks.data[qindex + k].pos - qry->nicks.data[qindex + k - 1].pos);
 		++k;
-		if (matches[i] == 3) {
+		if (matches[i] == 3 || matches[i] == 5) {
 			fprintf(stdout, "+%d", qry->nicks.data[qindex + k].pos - qry->nicks.data[qindex + k - 1].pos);
 			++k;
+			if (matches[i] == 5) {
+				fprintf(stdout, "+%d", qry->nicks.data[qindex + k].pos - qry->nicks.data[qindex + k - 1].pos);
+				++k;
+			}
 		}
 	}
 	fprintf(stdout, "\n");
+}
+
+static inline int reach_end(const struct ref_node *n, int direct, size_t offset)
+{
+	return ((n[direct * offset].flag & (direct > 0 ? LAST_INTERVAL : FIRST_INTERVAL)) != 0);
 }
 
 static void map(const struct ref_map *ref, struct fragment *qry_item)
@@ -97,26 +109,18 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 		for (i = 0; i < ref->index_.size; ++i) {
 			const struct ref_index *r = &ref->index_.data[i];
 			const struct ref_node *n = r->node;
+			assert((n->flag & LAST_INTERVAL) == 0);
+			assert((n->flag & FIRST_INTERVAL) == 0);
+
 			rindex = n - ref->nodes.data;
 			if (n->size < fragment_size * (1 - tolerance)) continue;
 			if (n->size > fragment_size * (1 + tolerance)) break;
 
 			matches.size = 0;
-			for (j = 0, k = 0, missing = 0, extra = 0; j + 1 < qry_item->nicks.size; ++j, ++k) {
+			for (j = 0, k = 0, missing = 0, extra = 0; qindex + k < qry_item->nicks.size; ++j, ++k) {
 				int match = 0;
 				int ref_size, qry_size;
 
-				if (r->direct > 0) {
-					if (n[j * r->direct].flag & LAST_INTERVAL) {
-						assert(j > 0);
-						break;
-					}
-				} else {
-					if (n[j * r->direct].flag & FIRST_INTERVAL) {
-						assert(j > 0);
-						break;
-					}
-				}
 				if (j == 0) {
 					match = 1; /* the first interval is always matched */
 					if (verbose > 1) {
@@ -125,14 +129,18 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 					}
 				} else {
 					/* try matching */
+					if (reach_end(n, r->direct, j)) {
+						assert(j > 0);
+						break;
+					}
 					ref_size = n[j * r->direct].size;
 					qry_size = (p + k)->pos - (p + k - 1)->pos;
 					if (qry_size >= ref_size * (1 - tolerance) && qry_size <= ref_size * (1 + tolerance)) {
 						match = 1;
 					}
 
-					if (!match) {
-						/* try matching with missing nick */
+					/* try matching with missing nick */
+					if (!match && !reach_end(n, r->direct, j + 1)) {
 						ref_size = n[(j + 1) * r->direct].size + n[j * r->direct].size;
 						qry_size = (p + k)->pos - (p + k - 1)->pos;
 						if (qry_size >= ref_size * (1 - tolerance) && qry_size <= ref_size * (1 + tolerance)) {
@@ -141,13 +149,33 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 						}
 					}
 
-					if (!match) {
-						/* try matching with extra nick */
+					/* try matching with extra nick */
+					if (!match && (qindex + k + 1 < qry_item->nicks.size)) {
 						ref_size = n[j * r->direct].size;
 						qry_size = (p + k + 1)->pos - (p + k - 1)->pos;
 						if (qry_size >= ref_size * (1 - tolerance) && qry_size <= ref_size * (1 + tolerance)) {
 							match = 3;
 							++extra;
+						}
+					}
+
+					/* try matching with two missing nicks */
+					if (!match && !reach_end(n, r->direct, j + 2)) {
+						ref_size = n[(j + 2) * r->direct].size + n[(j + 1) * r->direct].size + n[j * r->direct].size;
+						qry_size = (p + k)->pos - (p + k - 1)->pos;
+						if (qry_size >= ref_size * (1 - tolerance) && qry_size <= ref_size * (1 + tolerance)) {
+							match = 4;
+							missing += 2;
+						}
+					}
+
+					/* try matching with two extra nicks */
+					if (!match && (qindex + k + 2 < qry_item->nicks.size)) {
+						ref_size = n[j * r->direct].size;
+						qry_size = (p + k + 2)->pos - (p + k - 1)->pos;
+						if (qry_size >= ref_size * (1 - tolerance) && qry_size <= ref_size * (1 + tolerance)) {
+							match = 5;
+							extra += 2;
 						}
 					}
 				}
@@ -170,6 +198,10 @@ static void map(const struct ref_map *ref, struct fragment *qry_item)
 					++j;
 				} else if (match == 3) {
 					++k;
+				} else if (match == 4) {
+					j += 2;
+				} else if (match == 5) {
+					k += 2;
 				}
 			}
 			if (matches.size + 1 >= min_match) {
