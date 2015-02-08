@@ -14,7 +14,6 @@
 void ref_map_init(struct ref_map *ref)
 {
 	memset(ref, 0, sizeof(struct ref_map));
-	ref->nick_offset = -1;
 }
 
 void ref_map_free(struct ref_map *ref)
@@ -24,57 +23,51 @@ void ref_map_free(struct ref_map *ref)
 	nick_map_free(&ref->map);
 }
 
-int ref_map_set_enzyme(struct ref_map *ref, const char *enzyme, const char *rec_seq)
+int prepare_rec_site(struct rec_site *site, const char *enzyme, const char *rec_seq)
 {
-	char checked_rec_seq[sizeof(ref->map.rec_seq)];
-	char rec_bases[sizeof(ref->rec_bases)];
-	int rec_seq_size;
-	int nick_offset = -1;
-	int palindrome;
 	int i;
 
-	for (i = 0, rec_seq_size = 0; rec_seq[i]; ++i) {
+	assert(site != NULL);
+	assert(enzyme != NULL);
+	assert(rec_seq != NULL);
+
+	memset(site, 0, sizeof(struct rec_site));
+	snprintf(site->enzyme, sizeof(site->enzyme), "%s", enzyme);
+	snprintf(site->rec_seq, sizeof(site->rec_seq), "%s", rec_seq);
+	assert(strcmp(site->enzyme, enzyme) == 0); /* ensure no buffer overflow */
+	assert(strcmp(site->rec_seq, rec_seq) == 0);
+
+	site->nick_offset = -1;
+	site->rec_seq_size = 0;
+	for (i = 0; rec_seq[i]; ++i) {
 		if (rec_seq[i] == '^') {
-			if (nick_offset >= 0) {
+			if (site->nick_offset >= 0) {
 				fprintf(stderr, "Error: Invalid recognition sequence '%s'\n", rec_seq);
 				return 1;
 			}
-			nick_offset = i;
+			site->nick_offset = i;
 		} else {
 			char c = char_to_base(rec_seq[i]);
 			if (c == 0) {
 				fprintf(stderr, "Error: Invalid character '%c' in recognition sequence '%s'\n", rec_seq[i], rec_seq);
 				return 1;
 			}
-			if (rec_seq_size >= sizeof(rec_bases)) {
+			if (site->rec_seq_size >= sizeof(site->rec_bases)) {
 				fprintf(stderr, "Error: Recognition sequence is too long\n");
 				return 1;
 			}
-			rec_bases[rec_seq_size++] = c;
+			site->rec_bases[site->rec_seq_size++] = c;
 		}
 	}
-	for (i = 0, palindrome = 1; i < rec_seq_size / 2; ++i) {
-		if (rec_bases[i] != base_to_comp(rec_bases[rec_seq_size - i - 1])) {
-			palindrome = 0;
+	if (site->nick_offset < 0) {
+		fprintf(stderr, "Error: Missing '^' in recognition sequence '%s'\n", rec_seq);
+		return 1;
+	}
+	for (i = 0, site->palindrome = 1; i < site->rec_seq_size / 2; ++i) {
+		if (site->rec_bases[i] != base_to_comp(site->rec_bases[site->rec_seq_size - i - 1])) {
+			site->palindrome = 0;
 			break;
 		}
-	}
-	snprintf(checked_rec_seq, sizeof(checked_rec_seq), "%s%s",
-			(nick_offset < 0 ? "^" : ""), rec_seq);
-
-	if (ref->nick_offset >= 0) { /* merging maps */
-		if (strcmp(ref->map.enzyme, enzyme) != 0 ||
-				strcmp(ref->map.rec_seq, checked_rec_seq) != 0) {
-			fprintf(stderr, "Error: Merging is supported for only single enzyme\n");
-			return 1;
-		}
-	} else {
-		nick_map_set_enzyme(&ref->map, enzyme, checked_rec_seq);
-
-		memcpy(ref->rec_bases, rec_bases, sizeof(ref->rec_bases));
-		ref->rec_seq_size = rec_seq_size;
-		ref->nick_offset = (nick_offset < 0 ? 0 : nick_offset);
-		ref->palindrome = palindrome;
 	}
 	return 0;
 }
@@ -97,8 +90,8 @@ struct buffer {
 	size_t pos;
 };
 
-static int process_line(struct ref_map *ref, struct fragment *f,
-		const char *line, int base_count, struct buffer *buf)
+static int process_line(struct buffer *buf, const char *line, int base_count,
+		const struct rec_site *site, struct fragment *f)
 {
 	const char *p;
 	int strand;
@@ -108,37 +101,47 @@ static int process_line(struct ref_map *ref, struct fragment *f,
 			continue;
 		}
 		if (buf->pos >= sizeof(buf->data)) {
-			memcpy(buf->data, buf->data + sizeof(buf->data) - ref->rec_seq_size + 1, ref->rec_seq_size - 1);
-			buf->pos = ref->rec_seq_size - 1;
+			memcpy(buf->data, buf->data + sizeof(buf->data) - site->rec_seq_size + 1, site->rec_seq_size - 1);
+			buf->pos = site->rec_seq_size - 1;
 		}
 		++base_count;
 		buf->data[buf->pos++] = char_to_base(*p);
-		if (buf->pos < ref->rec_seq_size) {
+		if (buf->pos < site->rec_seq_size) {
 			continue;
 		}
 		for (strand = 0, matched = 0; strand < 2; ++strand) {
-			if (matched || seq_match(buf->data + buf->pos - ref->rec_seq_size,
-					ref->rec_bases, ref->rec_seq_size, strand)) {
-				int site_pos = base_count - (strand == 1 ? ref->nick_offset
-						: (ref->rec_seq_size - ref->nick_offset));
+			if (matched || seq_match(buf->data + buf->pos - site->rec_seq_size,
+					site->rec_bases, site->rec_seq_size, strand)) {
+				int site_pos = base_count - (strand == 1 ? site->nick_offset
+						: (site->rec_seq_size - site->nick_offset));
 				if (nick_map_add_site(f, site_pos,
 						(strand == 0 ? NICK_PLUS_STRAND : NICK_MINUS_STRAND))) {
 					return -ENOMEM;
 				}
-				matched = ref->palindrome;
+				matched = site->palindrome;
 			}
 		}
 	}
 	return base_count;
 }
 
-int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_only, int verbose)
+int nick_map_load_fasta(struct ref_map *ref, const char *filename,
+		const struct rec_site *site, int chrom_only, int verbose)
 {
 	gzFile file;
 	struct fragment *f = NULL;
 	char name[MAX_CHROM_NAME_SIZE] = "";
 	struct buffer buf = { };
 	int c, ret = 0, base_count = 0;
+
+	if (!ref->map.enzyme[0]) {
+		assert(sizeof(ref->map.enzyme) == MAX_ENZYME_NAME_SIZE + 1);
+		assert(sizeof(ref->map.rec_seq) == MAX_REC_SEQ_SIZE + 1);
+		assert(sizeof(site->enzyme) == MAX_ENZYME_NAME_SIZE + 1);
+		assert(sizeof(site->rec_seq) == MAX_REC_SEQ_SIZE + 1);
+		memcpy(ref->map.enzyme, site->enzyme, sizeof(ref->map.enzyme));
+		memcpy(ref->map.rec_seq, site->rec_seq, sizeof(ref->map.rec_seq));
+	}
 
 	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
 		file = gzdopen(0, "r"); /* stdin */
@@ -203,7 +206,7 @@ int nick_map_load_fasta(struct ref_map *ref, const char *filename, int chrom_onl
 				goto out;
 			}
 		} else if (f) {
-			int n = process_line(ref, f, line, base_count, &buf);
+			int n = process_line(&buf, line, base_count, site, f);
 			if (n < 0) {
 				ret = n;
 				goto out;

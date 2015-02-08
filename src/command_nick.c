@@ -82,6 +82,7 @@ static int check_options(int argc, char * const argv[])
 
 int nick_main(int argc, char * const argv[])
 {
+	struct rec_site site;
 	struct ref_map ref;
 	int i, ret = 0;
 
@@ -91,12 +92,13 @@ int nick_main(int argc, char * const argv[])
 
 	ref_map_init(&ref);
 
-	if ((ret = ref_map_set_enzyme(&ref, enzyme, rec_seq)) != 0) {
+	if ((ret = prepare_rec_site(&site, enzyme, rec_seq)) != 0) {
 		goto final;
 	}
 
 	for (i = optind; i < argc; ++i) {
-		if ((ret = nick_map_load_fasta(&ref, argv[i], chrom_only, verbose)) != 0) {
+		if ((ret = nick_map_load_fasta(&ref, argv[i],
+				&site, chrom_only, verbose)) != 0) {
 			goto final;
 		}
 	}
