@@ -42,52 +42,6 @@ static void skip_to_next_line(struct file *fp, char *buf, size_t bufsize)
 	}
 }
 
-int read_string(struct file *fp, char *buf, size_t bufsize)
-{
-	size_t i = 0;
-	int c;
-
-	assert(fp != NULL);
-	assert(buf != NULL);
-	assert(bufsize > 0);
-
-	skip_spaces(fp);
-	while ((c = gzgetc(fp->file)) != EOF) {
-		if (isspace(c)) {
-			gzungetc(c, fp->file);
-			break;
-		} else if (i + 1 < bufsize) {
-			buf[i++] = (char)c;
-		}
-	}
-	buf[i] = '\0';
-	return (i > 0 ? 0 : -1);
-}
-
-int read_integer(struct file *fp, int *value)
-{
-	int c;
-
-	assert(fp != NULL);
-	assert(value != NULL);
-
-	skip_spaces(fp);
-	c = gzgetc(fp->file);
-	if (!isdigit(c)) {
-		gzungetc(c, fp->file);
-		return -1;
-	}
-	*value = c - '0';
-	while ((c = gzgetc(fp->file)) != EOF) {
-		if (!isdigit(c)) {
-			gzungetc(c, fp->file);
-			break;
-		}
-		*value = *value * 10 + (c - '0');
-	}
-	return 0;
-}
-
 static int read_double(struct file *fp, double *value)
 {
 	int c, point = 0;
@@ -434,11 +388,10 @@ int bn_skip_comment_lines(struct file *fp)
 int bn_read_header(struct file *fp, int *format, struct nick_map *map)
 {
 	char buf[256];
-	int c;
 
 	*format = FORMAT_UNKNOWN;
 	while (!gzeof(fp->file) && *format == FORMAT_UNKNOWN) {
-		if ((c = gzungetc(gzgetc(fp->file), fp->file)) != '#') {
+		if (current_char(fp) != '#') {
 			break;
 		}
 		if (read_line(fp, buf, sizeof(buf))) {

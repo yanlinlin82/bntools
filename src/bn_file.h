@@ -25,8 +25,5 @@ int save_header(gzFile file, const struct nick_map *map, int format);
 int save_fragment(gzFile file, const struct fragment *fragment, int format);
 
 int bn_skip_comment_lines(struct file *fp);
-int read_string(struct file *fp, char *buf, size_t bufsize);
-int read_integer(struct file *fp, int *value);
-void skip_current_line(struct file *fp);
 
 #endif /* __BN_FILE_H__ */

@@ -45,7 +45,7 @@ struct rec_site {
 
 int prepare_rec_site(struct rec_site *site, const char *enzyme, const char *rec_seq);
 
-int nick_map_load_fasta(struct ref_map *ref, const char *filename,
+int nick_map_load_seq(struct ref_map *ref, const char *filename,
 		const struct rec_site *site, int chrom_only, int verbose);
 
 int ref_map_build_index(struct ref_map *ref);

@@ -21,7 +21,7 @@ struct file *file_open(const char *filename)
 		fp->file = gzopen(filename, "r");
 	}
 	if (!fp->file) {
-		fprintf(stderr, "Error: Can not open file '%s'!\n", filename);
+		fprintf(stderr, "Error: Can not open file to read: '%s'\n", filename);
 		free(fp);
 		return NULL;
 	}
@@ -69,4 +69,50 @@ void skip_current_line(struct file *fp)
 			break;
 		}
 	}
+}
+
+int read_string(struct file *fp, char *buf, size_t bufsize)
+{
+	size_t i = 0;
+	int c;
+
+	assert(fp != NULL);
+	assert(buf != NULL);
+	assert(bufsize > 0);
+
+	skip_spaces(fp);
+	while ((c = gzgetc(fp->file)) != EOF) {
+		if (isspace(c)) {
+			gzungetc(c, fp->file);
+			break;
+		} else if (i + 1 < bufsize) {
+			buf[i++] = (char)c;
+		}
+	}
+	buf[i] = '\0';
+	return (i > 0 ? 0 : -1);
+}
+
+int read_integer(struct file *fp, int *value)
+{
+	int c;
+
+	assert(fp != NULL);
+	assert(value != NULL);
+
+	skip_spaces(fp);
+	c = gzgetc(fp->file);
+	if (!isdigit(c)) {
+		gzungetc(c, fp->file);
+		return -1;
+	}
+	*value = c - '0';
+	while ((c = gzgetc(fp->file)) != EOF) {
+		if (!isdigit(c)) {
+			gzungetc(c, fp->file);
+			break;
+		}
+		*value = *value * 10 + (c - '0');
+	}
+	return 0;
 }

@@ -26,10 +26,10 @@ static int chrom_only = 0;
 static void print_usage(void)
 {
 	fprintf(stderr, "\n"
-			"Usage: bntools nick [options] <x.fa> [...]\n"
+			"Usage: bntools nick [options] <INPUT> [...]\n"
 			"\n"
 			"Options:\n"
-			"   <x.fa> [...]   input FASTA file(s) to generate restriction map\n"
+			"   <INPUT> [...]  input FASTA/FASTQ file(s) to generate restriction map\n"
 			"   -o FILE        output file ["DEF_OUTPUT"]\n"
 			"   -f STR         output format, tsv/cmap/bnx/txt ["DEF_FORMAT"]\n"
 			"   -e STR         restriction enzyme name ["DEF_ENZ_NAME"]\n"
@@ -97,7 +97,7 @@ int nick_main(int argc, char * const argv[])
 	}
 
 	for (i = optind; i < argc; ++i) {
-		if ((ret = nick_map_load_fasta(&ref, argv[i],
+		if ((ret = nick_map_load_seq(&ref, argv[i],
 				&site, chrom_only, verbose)) != 0) {
 			goto final;
 		}

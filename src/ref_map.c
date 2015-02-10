@@ -9,6 +9,7 @@
 #include "version.h"
 #include "ref_map.h"
 #include "base_map.h"
+#include "io_base.h"
 #include "bn_file.h"
 
 void ref_map_init(struct ref_map *ref)
@@ -90,49 +91,32 @@ struct buffer {
 	size_t pos;
 };
 
-static int process_line(struct buffer *buf, const char *line, int base_count,
-		const struct rec_site *site, struct fragment *f)
+static int is_chrom(const char *name)
 {
-	const char *p;
-	int strand;
-	int matched;
-	for (p = line; *p; ++p) {
-		if (isspace(*p)) {
-			continue;
-		}
-		if (buf->pos >= sizeof(buf->data)) {
-			memcpy(buf->data, buf->data + sizeof(buf->data) - site->rec_seq_size + 1, site->rec_seq_size - 1);
-			buf->pos = site->rec_seq_size - 1;
-		}
-		++base_count;
-		buf->data[buf->pos++] = char_to_base(*p);
-		if (buf->pos < site->rec_seq_size) {
-			continue;
-		}
-		for (strand = 0, matched = 0; strand < 2; ++strand) {
-			if (matched || seq_match(buf->data + buf->pos - site->rec_seq_size,
-					site->rec_bases, site->rec_seq_size, strand)) {
-				int site_pos = base_count - (strand == 1 ? site->nick_offset
-						: (site->rec_seq_size - site->nick_offset));
-				if (nick_map_add_site(f, site_pos,
-						(strand == 0 ? NICK_PLUS_STRAND : NICK_MINUS_STRAND))) {
-					return -ENOMEM;
-				}
-				matched = site->palindrome;
-			}
-		}
+	const char *p = name;
+	if (memcmp(p, "chr", 3) == 0) {
+		p += 3;
 	}
-	return base_count;
+	if (isdigit(p[0]) && p[1] == '\0') {
+		return 1;
+	} else if (isdigit(p[0]) && isdigit(p[1]) && p[2] == '\0') {
+		return 1;
+	} else if ((p[0] == 'X' || p[1] == 'Y') && p[2] == '\0') {
+		return 1;
+	} else {
+		return 0;
+	}
 }
 
-int nick_map_load_fasta(struct ref_map *ref, const char *filename,
+int nick_map_load_seq(struct ref_map *ref, const char *filename,
 		const struct rec_site *site, int chrom_only, int verbose)
 {
-	gzFile file;
+	struct file *fp;
 	struct fragment *f = NULL;
 	char name[MAX_CHROM_NAME_SIZE] = "";
 	struct buffer buf = { };
 	int c, ret = 0, base_count = 0;
+	int format = 0; /* 1 - FASTA, 2 - FASTQ */
 
 	if (!ref->map.enzyme[0]) {
 		assert(sizeof(ref->map.enzyme) == MAX_ENZYME_NAME_SIZE + 1);
@@ -143,85 +127,106 @@ int nick_map_load_fasta(struct ref_map *ref, const char *filename,
 		memcpy(ref->map.rec_seq, site->rec_seq, sizeof(ref->map.rec_seq));
 	}
 
-	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
-		file = gzdopen(0, "r"); /* stdin */
-	} else {
-		file = gzopen(filename, "r");
-	}
-	if (!file) {
-		fprintf(stderr, "Error: Can not open FASTA file '%s'\n", filename);
+	fp = file_open(filename);
+	if (!fp) {
 		return 1;
 	}
 
-	c = gzgetc(file);
-	if (c != '>') {
-		fprintf(stderr, "Error: File '%s' is not in FASTA format\n", filename);
+	c = gzgetc(fp->file);
+	if (c == '>') {
+		format = 1;
+	} else if (c == '@') {
+		format = 2;
+	} else {
+		fprintf(stderr, "Error: File '%s' is not in FASTA/FASTQ format\n", filename);
 		ret = -EINVAL;
 		goto out;
 	}
-	gzungetc(c, file);
 
-	while (!gzeof(file)) {
-		char line[256];
-		if (!gzgets(file, line, sizeof(line))) break;
-		if (line[0] == '>') {
-			if (f) {
-				f->size = base_count;
-				if (verbose > 0) {
-					fprintf(stderr, "%d bp\n", base_count);
-				}
-			}
-			if (chrom_only) {
-				int skip = 1;
-				const char *p = line + 1;
-				if (memcmp(p, "chr", 3) == 0) {
-					p += 3;
-				}
-				if (p[0] >= '1' && p[0] <= '9' && isspace(p[1])) {
-					skip = 0;
-				} else if ((p[0] == '1' || p[0] == '2') &&
-						(p[1] >= '0' && p[1] <= '9') && isspace(p[2])) {
-					skip = 0;
-				} else if ((p[0] == 'X' || p[1] == 'Y') && isspace(p[1])) {
-					skip = 0;
-				}
-				if (skip) {
-					f = NULL;
-					continue;
-				}
-			}
-			{
-				char *p = line + 1;
-				while (*p && !isspace(*p)) ++p;
-				*p = '\0';
-				snprintf(name, sizeof(name), "%s", line + 1);
-			}
-			if (verbose > 0) {
-				fprintf(stderr, "Loading fragment '%s' ... ", name);
-			}
-			base_count = 0;
+	for (;;) {
+		int newline = 1;
+
+		if (read_string(fp, name, sizeof(name))) {
+			break;
+		}
+		skip_current_line(fp);
+
+		if (chrom_only && !is_chrom(name)) {
+			f = NULL;
+		} else {
 			f = nick_map_add_fragment(&ref->map, name);
 			if (!f) {
 				ret = -ENOMEM;
 				goto out;
 			}
-		} else if (f) {
-			int n = process_line(&buf, line, base_count, site, f);
-			if (n < 0) {
-				ret = n;
-				goto out;
+			base_count = 0;
+			if (verbose > 0) {
+				fprintf(stderr, "Loading fragment '%s' ... ", name);
 			}
-			base_count = n;
 		}
-	}
-	if (f) {
+
+		for (;;) {
+			int base;
+
+			c = gzgetc(fp->file);
+			if (c == EOF) {
+				break;
+			} else if (c == '\n') {
+				++fp->line;
+			}
+
+			base = char_to_base(c);
+			if (base) {
+				if (buf.pos >= sizeof(buf.data)) {
+					memcpy(buf.data, buf.data + sizeof(buf.data)
+							- site->rec_seq_size + 1,
+							site->rec_seq_size - 1);
+					buf.pos = site->rec_seq_size - 1;
+				}
+				++base_count;
+				buf.data[buf.pos++] = base;
+
+				if (buf.pos >= site->rec_seq_size) {
+					int strand, matched;
+					for (strand = 0, matched = 0; strand < 2; ++strand) {
+						if (matched || seq_match(buf.data + buf.pos - site->rec_seq_size,
+								site->rec_bases, site->rec_seq_size, strand)) {
+							int site_pos = base_count - (strand == 1 ? site->nick_offset
+									: (site->rec_seq_size - site->nick_offset));
+							if (nick_map_add_site(f, site_pos,
+									(strand == 0 ? NICK_PLUS_STRAND : NICK_MINUS_STRAND))) {
+								return -ENOMEM;
+							}
+							matched = site->palindrome;
+						}
+					}
+				}
+			} else {
+				if (format == 1) {
+					if (newline && c == '>') {
+						break;
+					}
+				} else {
+					assert(format == 2);
+					if (c == '\n') {
+						skip_current_line(fp); /* skip 3rd line */
+						skip_current_line(fp); /* skip 4rd line */
+						c = gzgetc(fp->file);
+						break;
+					}
+				}
+			}
+
+			newline = (c == '\n');
+		}
+
 		f->size = base_count;
-		if (verbose > 0) {
+		if (f && verbose > 0) {
 			fprintf(stderr, "%d bp\n", base_count);
 		}
 	}
 out:
-	gzclose(file);
+	file_close(fp);
 	return ret;
 }
 
