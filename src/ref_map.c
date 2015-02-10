@@ -411,7 +411,7 @@ int ref_map_save(const struct ref_map *ref, const char *filename)
 
 int ref_map_load(struct ref_map *ref, const char *filename)
 {
-	struct bn_file *file;
+	struct file *file;
 	size_t count;
 	int value;
 	size_t index, chrom, label;
@@ -438,12 +438,12 @@ int ref_map_load(struct ref_map *ref, const char *filename)
 		return -ENOMEM;
 	}
 
-	file = bn_open(filename);
+	file = file_open(filename);
 	if (!file) {
 		return -EINVAL;
 	}
 	if (bn_skip_comment_lines(file)) {
-		bn_close(file);
+		file_close(file);
 		return -EINVAL;
 	}
 	for (m = 0;;) {
@@ -451,45 +451,45 @@ int ref_map_load(struct ref_map *ref, const char *filename)
 			break;
 		}
 		if (value < 0) {
-			bn_file_error(file, "Invalid value in 'index' column");
-			bn_close(file);
+			file_error(file, "Invalid value in 'index' column");
+			file_close(file);
 			return -EINVAL;
 		}
 		index = value;
 		node = ref->nodes.data + index;
 
 		if (read_integer(file, &value)) {
-			bn_file_error(file, "Failed to read 'chrom' column");
-			bn_close(file);
+			file_error(file, "Failed to read 'chrom' column");
+			file_close(file);
 			return -EINVAL;
 		}
 		if (value <= 0) {
-			bn_file_error(file, "Invalid value in 'chrom' column");
-			bn_close(file);
+			file_error(file, "Invalid value in 'chrom' column");
+			file_close(file);
 			return -EINVAL;
 		}
 		chrom = value - 1;
 		if (node->chrom != chrom) {
-			bn_file_error(file, "Column 'chrom' does not match");
-			bn_close(file);
+			file_error(file, "Column 'chrom' does not match");
+			file_close(file);
 			return -EINVAL;
 		}
 
 		if (read_integer(file, &value)) {
-			bn_file_error(file, "Failed to read 'label' column");
-			bn_close(file);
+			file_error(file, "Failed to read 'label' column");
+			file_close(file);
 			return -EINVAL;
 		}
 		label = value;
 		if (node->label != label) {
-			bn_file_error(file, "Column 'label' does not match");
-			bn_close(file);
+			file_error(file, "Column 'label' does not match");
+			file_close(file);
 			return -EINVAL;
 		}
 
 		if (read_string(file, directText, sizeof(directText))) {
-			bn_file_error(file, "Failed to read 'strand' column");
-			bn_close(file);
+			file_error(file, "Failed to read 'strand' column");
+			file_close(file);
 			return -EINVAL;
 		}
 		if (strcmp(directText, "+") == 0) {
@@ -497,47 +497,47 @@ int ref_map_load(struct ref_map *ref, const char *filename)
 		} else if (strcmp(directText, "-") == 0) {
 			direct = -1;
 		} else {
-			bn_file_error(file, "Invalid value '%s' in 'strand' column", directText);
-			bn_close(file);
+			file_error(file, "Invalid value '%s' in 'strand' column", directText);
+			file_close(file);
 			return -EINVAL;
 		}
 
 		if (read_string(file, name, sizeof(name))) {
-			bn_file_error(file, "Failed to read 'name' column");
-			bn_close(file);
+			file_error(file, "Failed to read 'name' column");
+			file_close(file);
 			return -EINVAL;
 		}
 		if (strcmp(ref->map.fragments.data[chrom].name, name) != 0) {
-			bn_file_error(file, "Column 'name' does not match");
-			bn_close(file);
+			file_error(file, "Column 'name' does not match");
+			file_close(file);
 			return -EINVAL;
 		}
 
 		if (read_integer(file, &pos)) {
-			bn_file_error(file, "Failed to read 'pos' column");
-			bn_close(file);
+			file_error(file, "Failed to read 'pos' column");
+			file_close(file);
 			return -EINVAL;
 		}
 		if (node->pos != pos) {
-			bn_file_error(file, "Column 'pos' does not match");
-			bn_close(file);
+			file_error(file, "Column 'pos' does not match");
+			file_close(file);
 			return -EINVAL;
 		}
 
 		if (read_integer(file, &size)) {
-			bn_file_error(file, "Failed to read 'size' column");
-			bn_close(file);
+			file_error(file, "Failed to read 'size' column");
+			file_close(file);
 			return -EINVAL;
 		}
 		if (node->size != size) {
-			bn_file_error(file, "Column 'size' does not match");
-			bn_close(file);
+			file_error(file, "Column 'size' does not match");
+			file_close(file);
 			return -EINVAL;
 		}
 
 		if (read_integer(file, &uniq)) {
-			bn_file_error(file, "Failed to read 'uniq' column");
-			bn_close(file);
+			file_error(file, "Failed to read 'uniq' column");
+			file_close(file);
 			return -EINVAL;
 		}
 		ref->index_.data[m].node = ref->nodes.data + index;
@@ -550,6 +550,6 @@ int ref_map_load(struct ref_map *ref, const char *filename)
 	assert(m == count);
 	ref->index_.size = count;
 
-	bn_close(file);
+	file_close(file);
 	return 0;
 }

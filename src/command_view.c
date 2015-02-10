@@ -21,7 +21,7 @@ static int verbose = 0;
 static int help = 0;
 
 static char output_file[PATH_MAX] = DEF_OUTPUT;
-static int format = FORMAT_TSV;
+static int out_format = FORMAT_TSV;
 static int counting = 0;
 static array(struct range) ranges = { };
 static int reverse = 0;
@@ -152,8 +152,8 @@ static int check_options(int argc, char * const argv[])
 			snprintf(output_file, sizeof(output_file), "%s", optarg);
 			break;
 		case 'f':
-			format = parse_format_text(optarg);
-			if (format == FORMAT_UNKNOWN) {
+			out_format = parse_format_text(optarg);
+			if (out_format == FORMAT_UNKNOWN) {
 				fprintf(stderr, "Error: Unknown output format '%s'!\n", optarg);
 				return 1;
 			}
@@ -255,7 +255,7 @@ int process_fragment(struct nick_map *map, struct fragment *f, gzFile file)
 			f->nicks.size = 0;
 			f->nicks.capacity = 0;
 		} else {
-			save_fragment(file, f, format);
+			save_fragment(file, f, out_format);
 		}
 	}
 	return 0;
@@ -263,12 +263,13 @@ int process_fragment(struct nick_map *map, struct fragment *f, gzFile file)
 
 int view_main(int argc, char * const argv[])
 {
-	struct bn_file *fp;
+	struct file *fp;
 	struct nick_map map = { };
 	struct fragment fragment = { };
 	struct fragment sub = { };
 	gzFile file;
 	int i, j, ret = 0;
+	int format;
 
 	if (check_options(argc, argv)) {
 		ret = 1;
@@ -278,32 +279,31 @@ int view_main(int argc, char * const argv[])
 	if (counting) {
 		save_into_map = 0;
 		file = NULL;
-	} else if (format == FORMAT_TXT || format == FORMAT_TSV) {
+	} else if (out_format == FORMAT_TXT || out_format == FORMAT_TSV) {
 		save_into_map = 0;
 		file = open_gzfile_write(output_file);
 		if (!file) {
 			ret = 1;
 			goto out;
 		}
-		save_header(file, &map, format);
+		save_header(file, &map, out_format);
 	} else {
 		save_into_map = 1;
 		file = NULL;
 	}
 
 	for (i = optind; i < argc; ++i) {
-		fp = bn_open(argv[i]);
+		fp = file_open(argv[i]);
 		if (!fp) {
 			ret = 1;
 			goto out;
 		}
-		if (fp->format == FORMAT_UNKNOWN) {
-			fprintf(stderr, "Error: Unknown file format of '%s'!\n", argv[i]);
-			bn_close(fp);
+		if (bn_read_header(fp, &format, &map) != 0) {
+			file_close(fp);
 			ret = 1;
 			goto out;
 		}
-		while (bn_read(fp, &fragment) == 0) {
+		while (bn_read(fp, format, &fragment) == 0) {
 			if (ranges.size == 0) {
 				if (process_fragment(&map, &fragment, file)) {
 					ret = 1;
@@ -321,13 +321,13 @@ int view_main(int argc, char * const argv[])
 				}
 			}
 		}
-		bn_close(fp);
+		file_close(fp);
 	}
 
 	if (counting) {
 		fprintf(stdout, "%zd\t%zd\t%lld\n", fragment_count, nick_count, total_size);
 	} else if (save_into_map) {
-		nick_map_save(&map, output_file, format);
+		nick_map_save(&map, output_file, out_format);
 	} else {
 		gzclose(file);
 	}

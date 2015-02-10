@@ -13,31 +13,7 @@ static inline int string_begins_as(const char *s, const char *prefix)
 	return (memcmp(s, prefix, strlen(prefix)) == 0);
 }
 
-static void skip_spaces(struct bn_file *fp)
-{
-	int c;
-	while ((c = gzgetc(fp->file)) != EOF) {
-		if (c == '\n') {
-			++fp->line;
-		} else if (!isspace(c)) {
-			gzungetc(c, fp->file);
-			break;
-		}
-	}
-}
-
-void skip_current_line(struct bn_file *fp)
-{
-	int c;
-	while ((c = gzgetc(fp->file)) != EOF) {
-		if (c == '\n') {
-			++fp->line;
-			break;
-		}
-	}
-}
-
-static int read_line(struct bn_file *fp, char *buf, size_t bufsize)
+static int read_line(struct file *fp, char *buf, size_t bufsize)
 {
 	size_t i = 0;
 	int c;
@@ -59,14 +35,14 @@ static int read_line(struct bn_file *fp, char *buf, size_t bufsize)
 	return (i > 0 ? 0 : -1);
 }
 
-static void skip_to_next_line(struct bn_file *fp, char *buf, size_t bufsize)
+static void skip_to_next_line(struct file *fp, char *buf, size_t bufsize)
 {
 	while (strchr(buf, '\n') == NULL) {
 		if (read_line(fp, buf, bufsize)) break;
 	}
 }
 
-int read_string(struct bn_file *fp, char *buf, size_t bufsize)
+int read_string(struct file *fp, char *buf, size_t bufsize)
 {
 	size_t i = 0;
 	int c;
@@ -88,7 +64,7 @@ int read_string(struct bn_file *fp, char *buf, size_t bufsize)
 	return (i > 0 ? 0 : -1);
 }
 
-int read_integer(struct bn_file *fp, int *value)
+int read_integer(struct file *fp, int *value)
 {
 	int c;
 
@@ -112,7 +88,7 @@ int read_integer(struct bn_file *fp, int *value)
 	return 0;
 }
 
-static int read_double(struct bn_file *fp, double *value)
+static int read_double(struct file *fp, double *value)
 {
 	int c, point = 0;
 	double factor = 0.1;
@@ -156,57 +132,7 @@ static int read_double(struct bn_file *fp, double *value)
 	return 0;
 }
 
-struct bn_file *bn_open(const char *filename)
-{
-	struct bn_file *fp;
-	int c;
-
-	fp = malloc(sizeof(struct bn_file));
-	if (!fp) {
-		return NULL;
-	}
-
-	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdin") == 0) {
-		fp->file = gzdopen(0, "r"); /* stdin */
-	} else {
-		fp->file = gzopen(filename, "r");
-	}
-	if (!fp->file) {
-		fprintf(stderr, "Error: Can not open file '%s'!\n", filename);
-		free(fp);
-		return NULL;
-	}
-
-	fp->format = FORMAT_UNKNOWN;
-	fp->name = filename;
-	fp->line = 1;
-	c = gzgetc(fp->file);
-	gzungetc(c, fp->file);
-
-	if (c != '#') { /* no any comment line, try as the simple text format */
-		fp->format = FORMAT_TXT;
-	} else {
-		char buf[256];
-		while (!gzeof(fp->file)) {
-			if (read_line(fp, buf, sizeof(buf))) break;
-			if (string_begins_as(buf, "##fileformat=MAPv0.1")) {
-				fp->format = FORMAT_TSV;
-			} else if (string_begins_as(buf, "# BNX File Version:")) {
-				fp->format = FORMAT_BNX;
-			} else if (string_begins_as(buf, "# CMAP File Version:")) {
-				fp->format = FORMAT_CMAP;
-			}
-			skip_to_next_line(fp, buf, sizeof(buf));
-			if (fp->format != FORMAT_UNKNOWN) break;
-			c = gzgetc(fp->file);
-			gzungetc(c, fp->file);
-			if (c != '#') break;
-		}
-	}
-	return fp;
-}
-
-static int bn_read_txt(struct bn_file *fp, struct fragment *f)
+static int bn_read_txt(struct file *fp, struct fragment *f)
 {
 	/* format as: id, #intervals, size[1], ..., size[#intervals] */
 	int count, i, pos;
@@ -220,7 +146,7 @@ static int bn_read_txt(struct bn_file *fp, struct fragment *f)
 		return -EINVAL;
 	}
 	if (read_integer(fp, &count)) {
-		bn_file_error(fp, "Unexpected EOF when read fragment number");
+		file_error(fp, "Unexpected EOF when read fragment number");
 		return -EINVAL;
 	}
 	if (count > 0) {
@@ -230,7 +156,7 @@ static int bn_read_txt(struct bn_file *fp, struct fragment *f)
 		f->nicks.size = count - 1;
 		for (i = 0, pos = 0; i < count; ++i) {
 			if (read_double(fp, &value)) {
-				bn_file_error(fp, "Unexpected EOF when read size of fragment[%d]", i);
+				file_error(fp, "Unexpected EOF when read size of fragment[%d]", i);
 				return -EINVAL;
 			}
 			pos += to_integer(value);
@@ -245,7 +171,7 @@ static int bn_read_txt(struct bn_file *fp, struct fragment *f)
 	return 0;
 }
 
-static int bn_read_tsv_header(struct bn_file *fp, struct nick_map *map)
+static int bn_read_tsv_header(struct file *fp, struct nick_map *map)
 {
 	char buf[256];
 	int c;
@@ -276,7 +202,7 @@ static int bn_read_tsv_header(struct bn_file *fp, struct nick_map *map)
 	return 0;
 }
 
-static int bn_read_tsv(struct bn_file *fp, struct fragment *f)
+static int bn_read_tsv(struct file *fp, struct fragment *f)
 {
 	char name[sizeof(f->name)];
 	char strandText[4];
@@ -298,23 +224,23 @@ static int bn_read_tsv(struct bn_file *fp, struct fragment *f)
 			snprintf(f->name, sizeof(f->name), "%s", name);
 		} else {
 			if (strncmp(f->name, name, sizeof(f->name) - 1) != 0) {
-				bn_file_error(fp, "Missing fragment end line");
+				file_error(fp, "Missing fragment end line");
 				return -EINVAL;
 			}
 		}
 
 		if (read_integer(fp, &label)) {
-			bn_file_error(fp, "Failed to read 'label' column");
+			file_error(fp, "Failed to read 'label' column");
 			return -EINVAL;
 		}
 
 		if (read_integer(fp, &pos)) {
-			bn_file_error(fp, "Failed to read 'pos' column");
+			file_error(fp, "Failed to read 'pos' column");
 			return -EINVAL;
 		}
 
 		if (read_string(fp, strandText, sizeof(strandText))) {
-			bn_file_error(fp, "Failed to read 'strand' column");
+			file_error(fp, "Failed to read 'strand' column");
 		}
 		if (strcmp(strandText, "?") == 0) {
 			strand = 0;
@@ -327,7 +253,7 @@ static int bn_read_tsv(struct bn_file *fp, struct fragment *f)
 		} else if (strcmp(strandText, "*") == 0) {
 			strand = -1;
 		} else {
-			bn_file_error(fp, "Unknown strand text '%s'", strandText);
+			file_error(fp, "Unknown strand text '%s'", strandText);
 			return -EINVAL;
 		}
 
@@ -348,7 +274,7 @@ static int bn_read_tsv(struct bn_file *fp, struct fragment *f)
 	return (f->name[0] ? 0 : -1);
 }
 
-static int bn_read_bnx(struct bn_file *fp, struct fragment *f)
+static int bn_read_bnx(struct file *fp, struct fragment *f)
 {
 	char type[5];
 	int c;
@@ -368,21 +294,21 @@ static int bn_read_bnx(struct bn_file *fp, struct fragment *f)
 		if (read_string(fp, type, sizeof(type))) break;
 		if (strcmp(type, "0") == 0) { /* molecule info */
 			if (f->name[0]) {
-				bn_file_error(fp, "Missing label info line");
+				file_error(fp, "Missing label info line");
 				return -EINVAL;
 			}
 			if (read_string(fp, f->name, sizeof(f->name))) {
-				bn_file_error(fp, "Failed to read molecule ID");
+				file_error(fp, "Failed to read molecule ID");
 				return -EINVAL;
 			}
 			if (read_double(fp, &value)) {
-				bn_file_error(fp, "Failed to read molecule size");
+				file_error(fp, "Failed to read molecule size");
 				return -EINVAL;
 			}
 			f->size = to_integer(value);
 		} else if (strcmp(type, "1") == 0) { /* label positions */
 			if (!f->name[0]) {
-				bn_file_error(fp, "Missing molecule info line");
+				file_error(fp, "Missing molecule info line");
 				return -EINVAL;
 			}
 			while (read_double(fp, &value) == 0) {
@@ -405,7 +331,7 @@ static int bn_read_bnx(struct bn_file *fp, struct fragment *f)
 	return (f->name[0] ? 0 : -1);
 }
 
-static int bn_read_cmap_header(struct bn_file *fp, struct nick_map *map)
+static int bn_read_cmap_header(struct file *fp, struct nick_map *map)
 {
 	char buf[256];
 	int c;
@@ -436,7 +362,7 @@ static int bn_read_cmap_header(struct bn_file *fp, struct nick_map *map)
 	return 0;
 }
 
-static int bn_read_cmap(struct bn_file *fp, struct fragment *f)
+static int bn_read_cmap(struct file *fp, struct fragment *f)
 {
 	char map_id[sizeof(f->name)];
 	int c, i, value, channel, pos;
@@ -457,14 +383,14 @@ static int bn_read_cmap(struct bn_file *fp, struct fragment *f)
 			snprintf(f->name, sizeof(f->name), "%s", map_id);
 		} else {
 			if (strncmp(f->name, map_id, sizeof(f->name) - 1) != 0) {
-				bn_file_error(fp, "Missing fragment end line");
+				file_error(fp, "Missing fragment end line");
 				return -EINVAL;
 			}
 		}
 
 		for (i = 0, channel = 0, pos = 0; i < 5; ++i) {
 			if (read_integer(fp, &value)) {
-				bn_file_error(fp, "Failed to read data");
+				file_error(fp, "Failed to read data");
 				return -EINVAL;
 			}
 			switch (i) {
@@ -491,7 +417,7 @@ static int bn_read_cmap(struct bn_file *fp, struct fragment *f)
 	return (f->name[0] ? 0 : -1);
 }
 
-int bn_skip_comment_lines(struct bn_file *fp)
+int bn_skip_comment_lines(struct file *fp)
 {
 	char buf[256];
 	int c;
@@ -505,9 +431,33 @@ int bn_skip_comment_lines(struct bn_file *fp)
 	return 0;
 }
 
-int bn_read_header(struct bn_file *fp, struct nick_map *map)
+int bn_read_header(struct file *fp, int *format, struct nick_map *map)
 {
-	switch (fp->format) {
+	char buf[256];
+	int c;
+
+	*format = FORMAT_UNKNOWN;
+	while (!gzeof(fp->file) && *format == FORMAT_UNKNOWN) {
+		if ((c = gzungetc(gzgetc(fp->file), fp->file)) != '#') {
+			break;
+		}
+		if (read_line(fp, buf, sizeof(buf))) {
+			break;
+		}
+		if (string_begins_as(buf, "##fileformat=MAPv0.1")) {
+			*format = FORMAT_TSV;
+		} else if (string_begins_as(buf, "# BNX File Version:")) {
+			*format = FORMAT_BNX;
+		} else if (string_begins_as(buf, "# CMAP File Version:")) {
+			*format = FORMAT_CMAP;
+		}
+		skip_to_next_line(fp, buf, sizeof(buf));
+	}
+	if (*format == FORMAT_UNKNOWN) {
+		*format = FORMAT_TXT; /* try simple text format for unrecognized file */
+	}
+
+	switch (*format) {
 	case FORMAT_TSV: return bn_read_tsv_header(fp, map);
 	case FORMAT_CMAP: return bn_read_cmap_header(fp, map);
 	case FORMAT_TXT:
@@ -516,27 +466,17 @@ int bn_read_header(struct bn_file *fp, struct nick_map *map)
 	}
 }
 
-int bn_read(struct bn_file *fp, struct fragment *f)
+int bn_read(struct file *fp, int format, struct fragment *f)
 {
 	assert(fp != NULL);
 	assert(f != NULL);
 
-	switch (fp->format) {
+	switch (format) {
 	case FORMAT_TXT: return bn_read_txt(fp, f);
 	case FORMAT_TSV: return bn_read_tsv(fp, f);
 	case FORMAT_BNX: return bn_read_bnx(fp, f);
 	case FORMAT_CMAP: return bn_read_cmap(fp, f);
 	default: assert(0); return -1;
-	}
-}
-
-void bn_close(struct bn_file *fp)
-{
-	if (fp) {
-		if (fp->file) {
-			gzclose(fp->file);
-		}
-		free(fp);
 	}
 }
 
@@ -557,23 +497,23 @@ int parse_format_text(const char *s)
 
 int nick_map_load(struct nick_map *map, const char *filename)
 {
-	struct bn_file *fp;
+	struct file *fp;
 	struct fragment fragment = { };
-	int err;
+	int err, format;
 
 	assert(map != NULL);
 	assert(map->fragments.data == NULL);
 	assert(map->fragments.size == 0);
 
-	fp = bn_open(filename);
+	fp = file_open(filename);
 	if (!fp) {
 		return -1;
 	}
-	if ((err = bn_read_header(fp, map)) != 0) {
-		bn_close(fp);
+	if ((err = bn_read_header(fp, &format, map)) != 0) {
+		file_close(fp);
 		return err;
 	}
-	while (bn_read(fp, &fragment) == 0) {
+	while (bn_read(fp, format, &fragment) == 0) {
 		if (array_reserve(map->fragments, map->fragments.size + 1)) {
 			return -ENOMEM;
 		}
@@ -584,7 +524,7 @@ int nick_map_load(struct nick_map *map, const char *filename)
 		fragment.nicks.size = 0;
 		fragment.nicks.capacity = 0;
 	}
-	bn_close(fp);
+	file_close(fp);
 	return 0;
 }
 
