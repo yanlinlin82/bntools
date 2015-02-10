@@ -12,15 +12,14 @@ enum file_format {  /* of restriction map */
 	FORMAT_CMAP,  /* .cmap file for consensus map, by BioNano inc. */
 };
 
+int parse_format_text(const char *s);
+
 int bn_read_header(struct file *fp, int *format, struct nick_map *map);
 int bn_read(struct file *fp, int format, struct fragment *f);
-
-int parse_format_text(const char *s);
 
 int nick_map_load(struct nick_map *map, const char *filename);
 int nick_map_save(const struct nick_map *map, const char *filename, int format);
 
-gzFile open_gzfile_write(const char *filename);
 int save_header(gzFile file, const struct nick_map *map, int format);
 int save_fragment(gzFile file, const struct fragment *fragment, int format);
 

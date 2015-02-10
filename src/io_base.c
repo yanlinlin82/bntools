@@ -3,6 +3,7 @@
 #include <string.h>
 #include <ctype.h>
 #include <assert.h>
+#include <errno.h>
 
 struct file *file_open(const char *filename)
 {
@@ -115,4 +116,102 @@ int read_integer(struct file *fp, int *value)
 		*value = *value * 10 + (c - '0');
 	}
 	return 0;
+}
+
+int read_line(struct file *fp, char *buf, size_t bufsize)
+{
+	size_t i = 0;
+	int c;
+
+	assert(fp != NULL);
+	assert(buf != NULL);
+	assert(bufsize > 1);
+
+	while ((c = gzgetc(fp->file)) != EOF) {
+		buf[i++] = (char)c;
+		if (c == '\n') {
+			++fp->line;
+		}
+		if (i + 1 == bufsize || c == '\n') {
+			break;
+		}
+	}
+	buf[i] = '\0';
+	return (i > 0 ? 0 : -1);
+}
+
+void skip_to_next_line(struct file *fp, char *buf, size_t bufsize)
+{
+	while (strchr(buf, '\n') == NULL) {
+		if (read_line(fp, buf, bufsize)) break;
+	}
+}
+
+int read_double(struct file *fp, double *value)
+{
+	int c, point = 0;
+	double factor = 0.1;
+
+	assert(fp != NULL);
+	assert(value != NULL);
+
+	skip_spaces(fp);
+	c = gzgetc(fp->file);
+	if (c != '.' && !isdigit(c)) {
+		gzungetc(c, fp->file);
+		return -1;
+	}
+	if (c == '.') {
+		point = 1;
+		*value = 0;
+	} else {
+		*value = c - '0';
+	}
+	while ((c = gzgetc(fp->file)) != EOF) {
+		if (c == '.') {
+			if (point) {
+				return -1;
+			} else {
+				point = 1;
+			}
+		} else if (isdigit(c)) {
+			if (point) {
+				*value += (c - '0') * factor;
+				factor /= 10;
+			} else {
+				*value = *value * 10 + (c - '0');
+			}
+		} else if (isspace(c)) {
+			gzungetc(c, fp->file);
+			break;
+		} else {
+			return -1;
+		}
+	}
+	return 0;
+}
+
+gzFile open_gzfile_write(const char *filename)
+{
+	gzFile file;
+
+	if (strcmp(filename, "-") == 0 || strcmp(filename, "stdout") == 0) {
+		file = gzdopen(1, "wT"); /* 1: stdout; 'T': without compression */
+	} else {
+		size_t len = strlen(filename);
+		if (len > 3 && strcmp(filename + len - 3, ".gz") == 0) {
+			file = gzopen(filename, "wx9"); /* 'x': check existed; '9': best compression */
+		} else {
+			file = gzopen(filename, "wxT"); /* 'T': without compression */
+		}
+	}
+	if (!file) {
+		if (errno == EEXIST) {
+			fprintf(stderr, "Error: Output file '%s' has already existed!\n", filename);
+		} else {
+			fprintf(stderr, "Error: Can not open output file '%s'\n", filename);
+		}
+		return NULL;
+	}
+	return file;
 }
