@@ -7,6 +7,9 @@
 #include "nick_map.h"
 #include "ref_map.h"
 #include "bn_file.h"
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
 
 #define DEF_TOLERANCE 0.1
 #define DEF_MIN_MATCH 4
@@ -35,8 +38,6 @@ static void print_header(void)
 	printf("#name\tchrom\tpos\tstrand\tsize\tlabels\t"
 			"qsize\tqlabels\trstart\trend\tqstart\tqend\tmissing\textra\talignment\n");
 }
-
-static inline size_t max(size_t a, size_t b) { return (a >= b ? a : b); }
 
 static void output_item(const struct ref_map *ref, const struct fragment *qry,
 		size_t rindex, size_t qindex, int direct, size_t rlabel, size_t qlabel,

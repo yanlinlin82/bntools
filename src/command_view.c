@@ -127,7 +127,7 @@ int append_range(const char *s)
 int append_ranges_in_file(const char *filename)
 {
 	FILE *fp = fopen(filename, "r");
-	if (!feof(fp)) {
+	if (!fp) {
 		fprintf(stderr, "Error: Can not open range file '%s'\n", filename);
 		return 1;
 	}

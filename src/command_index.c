@@ -3,6 +3,9 @@
 #include "nick_map.h"
 #include "ref_map.h"
 #include "bn_file.h"
+#ifndef PATH_MAX
+#define PATH_MAX 1024
+#endif
 
 static int verbose = 0;
 
